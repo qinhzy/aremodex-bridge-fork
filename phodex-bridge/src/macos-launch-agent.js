@@ -33,8 +33,8 @@ const DEFAULT_PAIRING_WAIT_TIMEOUT_MS = 10_000;
 const DEFAULT_PAIRING_WAIT_INTERVAL_MS = 200;
 
 // Runs the bridge inside launchd while keeping QR rendering in the foreground CLI command.
-function runMacOSBridgeService({ env = process.env } = {}) {
-  assertDarwinPlatform();
+function runMacOSBridgeService({ env = process.env, platform = os.platform() } = {}) {
+  assertDarwinPlatform(platform);
   const config = readDaemonConfig({ env });
   if (!config?.relayUrl) {
     const message = "No relay URL configured for the macOS bridge service.";
@@ -68,7 +68,7 @@ function runMacOSBridgeService({ env = process.env } = {}) {
 // Prepares config + launchd state and optionally waits for the fresh pairing payload written by the service.
 async function startMacOSBridgeService({
   env = process.env,
-  platform = process.platform,
+  platform = os.platform(),
   fsImpl = fs,
   execFileSyncImpl = execFileSync,
   osImpl = os,
@@ -124,7 +124,7 @@ async function startMacOSBridgeService({
 
 function stopMacOSBridgeService({
   env = process.env,
-  platform = process.platform,
+  platform = os.platform(),
   execFileSyncImpl = execFileSync,
   fsImpl = fs,
 } = {}) {
@@ -141,7 +141,7 @@ function stopMacOSBridgeService({
 // Revokes pairing immediately on macOS by stopping the daemon before rotating identity/trust state.
 function resetMacOSBridgePairing({
   env = process.env,
-  platform = process.platform,
+  platform = os.platform(),
   execFileSyncImpl = execFileSync,
   fsImpl = fs,
   resetBridgePairingImpl = resetBridgeDeviceState,
@@ -158,7 +158,7 @@ function resetMacOSBridgePairing({
 
 function getMacOSBridgeServiceStatus({
   env = process.env,
-  platform = process.platform,
+  platform = os.platform(),
   execFileSyncImpl = execFileSync,
   fsImpl = fs,
 } = {}) {
@@ -382,7 +382,7 @@ function resolveLaunchAgentPlistPath({ env = process.env, osImpl = os } = {}) {
   return path.join(homeDir, "Library", "LaunchAgents", `${SERVICE_LABEL}.plist`);
 }
 
-function assertDarwinPlatform(platform = process.platform) {
+function assertDarwinPlatform(platform = os.platform()) {
   if (platform !== "darwin") {
     throw new Error("macOS bridge service management is only available on macOS.");
   }

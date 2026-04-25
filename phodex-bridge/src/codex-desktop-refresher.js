@@ -6,6 +6,7 @@
 
 const { execFile } = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { readDaemonConfig } = require("./daemon-state");
 const { createThreadRolloutActivityWatcher } = require("./rollout-watch");
@@ -519,7 +520,7 @@ class CodexDesktopRefresher {
 
 function readBridgeConfig({
   env = process.env,
-  platform = process.platform,
+  platform = os.platform(),
   runtimeRoot = path.resolve(__dirname, ".."),
   fsImpl = fs,
 } = {}) {

@@ -20,16 +20,17 @@ test("ensureCodexCLI installs Codex when it is missing", () => {
   const result = ensureCodexCLI({
     execFileSyncImpl(command, args, options) {
       commands.push([command, args, options?.stdio || null]);
-      if (command === "codex" && args[0] === "--version") {
+      const executable = normalizeExecutableName(command);
+      if (executable === "codex" && args[0] === "--version") {
         if (!codexVersion) {
           throw new Error("missing codex");
         }
         return `codex-cli ${codexVersion}`;
       }
-      if (command === "npm" && args[0] === "--version") {
+      if (executable === "npm" && args[0] === "--version") {
         return "11.6.2";
       }
-      if (command === "npm" && args[0] === "install") {
+      if (executable === "npm" && args[0] === "install") {
         codexVersion = "0.120.0";
         return "";
       }
@@ -48,7 +49,7 @@ test("ensureCodexCLI installs Codex when it is missing", () => {
     versionAfter: "0.120.0",
   });
   assert.equal(
-    commands.some(([command, args]) => command === "npm" && args.join(" ") === "install -g @openai/codex@latest"),
+    commands.some(([command, args]) => normalizeExecutableName(command) === "npm" && args.join(" ") === "install -g @openai/codex@latest"),
     true
   );
   assert.deepEqual(messages, [
@@ -65,13 +66,14 @@ test("ensureCodexCLI updates Codex when it is already installed", () => {
 
   const result = ensureCodexCLI({
     execFileSyncImpl(command, args) {
-      if (command === "codex" && args[0] === "--version") {
+      const executable = normalizeExecutableName(command);
+      if (executable === "codex" && args[0] === "--version") {
         return `codex-cli ${codexVersion}`;
       }
-      if (command === "npm" && args[0] === "--version") {
+      if (executable === "npm" && args[0] === "--version") {
         return "11.6.2";
       }
-      if (command === "npm" && args[0] === "install") {
+      if (executable === "npm" && args[0] === "install") {
         codexVersion = "0.120.0";
         return "";
       }
@@ -102,10 +104,11 @@ test("ensureCodexCLI stops gracefully when npm is unavailable", () => {
 
   const result = ensureCodexCLI({
     execFileSyncImpl(command, args) {
-      if (command === "codex" && args[0] === "--version") {
+      const executable = normalizeExecutableName(command);
+      if (executable === "codex" && args[0] === "--version") {
         throw new Error("missing codex");
       }
-      if (command === "npm" && args[0] === "--version") {
+      if (executable === "npm" && args[0] === "--version") {
         throw new Error("missing npm");
       }
       throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
@@ -133,3 +136,7 @@ test("shouldSkipCodexBootstrap respects the opt-out env flag", () => {
   assert.equal(shouldSkipCodexBootstrap({ REMODEX_SKIP_CODEX_BOOTSTRAP: "true" }), true);
   assert.equal(shouldSkipCodexBootstrap({ REMODEX_SKIP_CODEX_BOOTSTRAP: "0" }), false);
 });
+
+function normalizeExecutableName(command) {
+  return String(command).replace(/\.cmd$/i, "");
+}

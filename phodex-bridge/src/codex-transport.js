@@ -6,6 +6,7 @@
 
 const { spawn } = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const WebSocket = require("ws");
 
@@ -13,6 +14,7 @@ function createCodexTransport({
   endpoint = "",
   env = process.env,
   appPath = "",
+  platform = os.platform(),
   spawnImpl = spawn,
   WebSocketImpl = WebSocket,
 } = {}) {
@@ -20,11 +22,11 @@ function createCodexTransport({
     return createWebSocketTransport({ endpoint, WebSocketImpl });
   }
 
-  return createSpawnTransport({ env, appPath, spawnImpl });
+  return createSpawnTransport({ env, appPath, platform, spawnImpl });
 }
 
-function createSpawnTransport({ env, appPath, spawnImpl = spawn }) {
-  const launchPlans = createCodexLaunchPlans({ env, appPath });
+function createSpawnTransport({ env, appPath, platform = os.platform(), spawnImpl = spawn }) {
+  const launchPlans = createCodexLaunchPlans({ env, appPath, platform });
   let launchIndex = -1;
   let activeLaunch = null;
   let codex = null;
@@ -172,7 +174,7 @@ function createSpawnTransport({ env, appPath, spawnImpl = spawn }) {
 function createCodexLaunchPlans({
   env,
   appPath = "",
-  platform = process.platform,
+  platform = os.platform(),
   fsImpl = fs,
   pathImpl = path,
 } = {}) {
@@ -237,7 +239,7 @@ function shutdownCodexProcess(codex) {
     return;
   }
 
-  if (process.platform === "win32" && codex.pid) {
+  if (os.platform() === "win32" && codex.pid) {
     const killer = spawn("taskkill", ["/pid", String(codex.pid), "/t", "/f"], {
       stdio: "ignore",
       windowsHide: true,

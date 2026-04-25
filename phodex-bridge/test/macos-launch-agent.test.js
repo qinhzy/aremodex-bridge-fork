@@ -80,7 +80,7 @@ test("stopMacOSBridgeService falls back to label bootout when plist bootout fail
       platform: "darwin",
       execFileSyncImpl(command, args) {
         calls.push([command, args]);
-        if (args[1] === `gui/${process.getuid()}`) {
+        if (args[1] === `gui/${expectedTestUid()}`) {
           const error = new Error("Input/output error");
           error.stderr = Buffer.from("Bootstrap failed: 5: Input/output error");
           throw error;
@@ -93,7 +93,7 @@ test("stopMacOSBridgeService falls back to label bootout when plist bootout fail
         "launchctl",
         [
           "bootout",
-          `gui/${process.getuid()}`,
+          `gui/${expectedTestUid()}`,
           path.join(process.env.HOME, "Library", "LaunchAgents", "com.remodex.bridge.plist"),
         ],
       ],
@@ -101,7 +101,7 @@ test("stopMacOSBridgeService falls back to label bootout when plist bootout fail
         "launchctl",
         [
           "bootout",
-          `gui/${process.getuid()}/com.remodex.bridge`,
+          `gui/${expectedTestUid()}/com.remodex.bridge`,
         ],
       ],
     ]);
@@ -142,7 +142,7 @@ test("runMacOSBridgeService records a clean error state instead of throwing when
     writePairingSession({ sessionId: "stale-session" });
 
     assert.doesNotThrow(() => {
-      runMacOSBridgeService({ env: process.env });
+      runMacOSBridgeService({ env: process.env, platform: "darwin" });
     });
 
     assert.equal(readPairingSession(), null);
@@ -234,7 +234,7 @@ test("getMacOSBridgeServiceStatus reports launchd + runtime metadata together", 
 
     const status = getMacOSBridgeServiceStatus({
       platform: "darwin",
-      env: { HOME: rootDir, REMODEX_DEVICE_STATE_DIR: rootDir },
+      env: { HOME: rootDir, REMODEX_DEVICE_STATE_DIR: rootDir, UID: String(expectedTestUid()) },
       execFileSyncImpl() {
         return "pid = 55";
       },
@@ -251,9 +251,11 @@ test("getMacOSBridgeServiceStatus reports launchd + runtime metadata together", 
 function withTempDaemonEnv(run) {
   const previousDir = process.env.REMODEX_DEVICE_STATE_DIR;
   const previousHome = process.env.HOME;
+  const previousUid = process.env.UID;
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "remodex-launch-agent-"));
   process.env.REMODEX_DEVICE_STATE_DIR = rootDir;
   process.env.HOME = rootDir;
+  process.env.UID = String(expectedTestUid());
 
   try {
     return run({ rootDir });
@@ -268,6 +270,15 @@ function withTempDaemonEnv(run) {
     } else {
       process.env.HOME = previousHome;
     }
+    if (previousUid === undefined) {
+      delete process.env.UID;
+    } else {
+      process.env.UID = previousUid;
+    }
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
+}
+
+function expectedTestUid() {
+  return typeof process.getuid === "function" ? process.getuid() : 501;
 }

@@ -607,7 +607,7 @@ function startBridge({
 
   // Opens the ChatGPT sign-in URL in the default browser on the bridge Mac.
   async function openPendingAuthLoginOnMac(params) {
-    if (process.platform !== "darwin") {
+    if (os.platform() !== "darwin") {
       const error = new Error("Opening ChatGPT sign-in on the bridge is only supported on macOS.");
       error.errorCode = "unsupported_platform";
       throw error;
@@ -1102,7 +1102,7 @@ function startBridge({
 
 // Holds a single macOS idle-sleep assertion for as long as the bridge process stays alive.
 function createMacOSBridgeWakeAssertion({
-  platform = process.platform,
+  platform = os.platform(),
   pid = process.pid,
   spawnImpl = spawn,
   consoleImpl = console,

@@ -6,6 +6,7 @@
 
 const { execFile } = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { promisify } = require("util");
 const { findRolloutFileForThread, resolveSessionsRoot } = require("./rollout-watch");
@@ -13,7 +14,7 @@ const { findRolloutFileForThread, resolveSessionsRoot } = require("./rollout-wat
 const execFileAsync = promisify(execFile);
 const DEFAULT_BUNDLE_ID = "com.openai.codex";
 const DEFAULT_APP_PATH = "/Applications/Codex.app";
-const DEFAULT_PLATFORM = process.platform;
+const DEFAULT_PLATFORM = os.platform();
 const HANDOFF_TIMEOUT_MS = 20_000;
 const DEFAULT_RELAUNCH_WAIT_MS = 300;
 const DEFAULT_APP_BOOT_WAIT_MS = 1_200;

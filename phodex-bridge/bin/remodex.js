@@ -5,16 +5,11 @@
 // Exports: none
 // Depends on: ../src
 
+const os = require("os");
 const {
-  getMacOSBridgeServiceStatus,
-  printMacOSBridgePairingQr,
-  printMacOSBridgeServiceStatus,
+  createPlatformAdapter,
   readBridgeConfig,
-  resetMacOSBridgePairing,
-  runMacOSBridgeService,
   startBridge,
-  startMacOSBridgeService,
-  stopMacOSBridgeService,
   resetBridgePairing,
   openLastActiveThread,
   watchThreadRollout,
@@ -22,15 +17,9 @@ const {
 const { version } = require("../package.json");
 
 const defaultDeps = {
-  getMacOSBridgeServiceStatus,
-  printMacOSBridgePairingQr,
-  printMacOSBridgeServiceStatus,
+  createPlatformAdapter,
   readBridgeConfig,
-  resetMacOSBridgePairing,
-  runMacOSBridgeService,
   startBridge,
-  startMacOSBridgeService,
-  stopMacOSBridgeService,
   resetBridgePairing,
   openLastActiveThread,
   watchThreadRollout,
@@ -44,7 +33,7 @@ if (require.main === module) {
 
 async function main({
   argv = process.argv,
-  platform = process.platform,
+  platform = os.platform(),
   consoleImpl = console,
   exitImpl = process.exit,
   deps = defaultDeps,
@@ -56,12 +45,18 @@ async function main({
     return;
   }
 
+  const adapter = deps.createPlatformAdapter({
+    platform,
+    startBridge: deps.startBridge,
+    resetBridgePairing: deps.resetBridgePairing,
+  });
+
   if (command === "up") {
-    if (platform === "darwin") {
-      const result = await deps.startMacOSBridgeService({
+    if (adapter.daemon.usesDaemonForUp) {
+      const result = await adapter.daemon.startDaemon({
         waitForPairing: true,
       });
-      deps.printMacOSBridgePairingQr({
+      adapter.daemon.printPairingQr({
         pairingSession: result.pairingSession,
       });
       return;
@@ -77,18 +72,18 @@ async function main({
   }
 
   if (command === "run-service") {
-    deps.runMacOSBridgeService();
+    adapter.daemon.runDaemonEntrypoint();
     return;
   }
 
   if (command === "start") {
-    assertMacOSCommand(command, {
-      platform,
+    assertBackgroundDaemonCommand(command, {
+      adapter,
       consoleImpl,
       exitImpl,
     });
     deps.readBridgeConfig();
-    const result = await deps.startMacOSBridgeService({
+    const result = await adapter.daemon.startDaemon({
       waitForPairing: false,
     });
     emitResult({
@@ -106,13 +101,13 @@ async function main({
   }
 
   if (command === "restart") {
-    assertMacOSCommand(command, {
-      platform,
+    assertBackgroundDaemonCommand(command, {
+      adapter,
       consoleImpl,
       exitImpl,
     });
     deps.readBridgeConfig();
-    const result = await deps.startMacOSBridgeService({
+    const result = await adapter.daemon.restartDaemon({
       waitForPairing: false,
     });
     emitResult({
@@ -130,12 +125,12 @@ async function main({
   }
 
   if (command === "stop") {
-    assertMacOSCommand(command, {
-      platform,
+    assertBackgroundDaemonCommand(command, {
+      adapter,
       consoleImpl,
       exitImpl,
     });
-    deps.stopMacOSBridgeService();
+    await adapter.daemon.stopDaemon();
     emitResult({
       payload: {
         ok: true,
@@ -149,33 +144,33 @@ async function main({
   }
 
   if (command === "status") {
-    assertMacOSCommand(command, {
-      platform,
+    assertBackgroundDaemonCommand(command, {
+      adapter,
       consoleImpl,
       exitImpl,
     });
     if (jsonOutput) {
       emitJson({
-        ...deps.getMacOSBridgeServiceStatus(),
+        ...adapter.daemon.getDaemonStatus(),
         currentVersion: version,
       });
       return;
     }
-    deps.printMacOSBridgeServiceStatus();
+    adapter.daemon.printDaemonStatus();
     return;
   }
 
   if (command === "reset-pairing") {
     try {
-      if (platform === "darwin") {
-        deps.resetMacOSBridgePairing();
+      if (adapter.daemon.supportsBackgroundDaemon) {
+        adapter.daemon.resetPairing();
         emitResult({
           payload: {
             ok: true,
             currentVersion: version,
-            platform: "darwin",
+            platform: adapter.id,
           },
-          message: "[remodex] Stopped the macOS bridge service and cleared the saved pairing state. Run `remodex up` to pair again.",
+          message: `[remodex] Stopped the ${adapter.displayName} bridge service and cleared the saved pairing state. Run \`remodex up\` to pair again.`,
           jsonOutput,
           consoleImpl,
         });
@@ -291,12 +286,12 @@ function emitJson(payload) {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
-function assertMacOSCommand(name, {
-  platform = process.platform,
+function assertBackgroundDaemonCommand(name, {
+  adapter,
   consoleImpl = console,
   exitImpl = process.exit,
 } = {}) {
-  if (platform === "darwin") {
+  if (adapter?.daemon?.supportsBackgroundDaemon) {
     return;
   }
 

@@ -221,7 +221,7 @@ function readKeychainStateString() {
     }
   }
 
-  if (process.platform !== "darwin") {
+  if (os.platform() !== "darwin") {
     return null;
   }
 
@@ -255,7 +255,7 @@ function writeKeychainStateString(value) {
     }
   }
 
-  if (process.platform !== "darwin") {
+  if (os.platform() !== "darwin") {
     return false;
   }
 
@@ -292,7 +292,7 @@ function deleteKeychainStateString() {
     }
   }
 
-  if (process.platform !== "darwin") {
+  if (os.platform() !== "darwin") {
     return false;
   }
 

@@ -5,6 +5,7 @@
 // Depends on: child_process
 
 const { execFileSync } = require("child_process");
+const os = require("os");
 
 const CODEX_PACKAGE_SPEC = "@openai/codex@latest";
 const SKIP_BOOTSTRAP_ENV_NAME = "REMODEX_SKIP_CODEX_BOOTSTRAP";
@@ -12,7 +13,7 @@ const SKIP_BOOTSTRAP_ENV_NAME = "REMODEX_SKIP_CODEX_BOOTSTRAP";
 // Keeps the Codex bootstrap flow explicit and reusable across postinstall and runtime startup paths.
 function ensureCodexCLI({
   env = process.env,
-  platform = process.platform,
+  platform = os.platform(),
   execFileSyncImpl = execFileSync,
   logger = console,
   shouldUpdate = true,
@@ -146,7 +147,7 @@ function readExecutableVersion({
   }
 }
 
-function resolveExecutableName(name, platform = process.platform) {
+function resolveExecutableName(name, platform = os.platform()) {
   return platform === "win32" ? `${name}.cmd` : name;
 }
 

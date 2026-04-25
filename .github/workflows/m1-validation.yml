@@ -1,0 +1,56 @@
+name: M1 Validation
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+jobs:
+  test:
+    name: npm test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: phodex-bridge/package-lock.json
+
+      - name: Install bridge dependencies
+        working-directory: phodex-bridge
+        run: npm ci --ignore-scripts
+
+      - name: Validate process.platform ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          matches="$(grep -R "process.platform" phodex-bridge/bin phodex-bridge/src phodex-bridge/test --include="*.js" || true)"
+          echo "$matches"
+          unexpected="$(printf '%s\n' "$matches" | grep -v 'phodex-bridge/src/platform/index.js' || true)"
+          if [ -n "$unexpected" ]; then
+            echo "process.platform must only appear in phodex-bridge/src/platform/index.js"
+            echo "$unexpected"
+            exit 1
+          fi
+          count="$(printf '%s\n' "$matches" | grep -c 'phodex-bridge/src/platform/index.js' || true)"
+          if [ "$count" -ne 1 ]; then
+            echo "Expected exactly one process.platform owner in phodex-bridge/src/platform/index.js; found $count"
+            exit 1
+          fi
+
+      - name: Run bridge tests
+        working-directory: phodex-bridge
+        run: npm test

@@ -20,6 +20,10 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function normalizePath(candidatePath) {
+  return String(candidatePath).replaceAll("\\", "/");
+}
+
 test("readBridgeConfig keeps safe defaults and explicit overrides", () => {
   const macConfig = readBridgeConfig({
     env: {},
@@ -40,10 +44,10 @@ test("readBridgeConfig keeps safe defaults and explicit overrides", () => {
     runtimeRoot: "/tmp/remodex-package",
     fsImpl: {
       existsSync(targetPath) {
-        return targetPath === "/tmp/remodex-state/daemon-config.json";
+        return normalizePath(targetPath) === "/tmp/remodex-state/daemon-config.json";
       },
       readFileSync(targetPath) {
-        if (targetPath === "/tmp/remodex-state/daemon-config.json") {
+        if (normalizePath(targetPath) === "/tmp/remodex-state/daemon-config.json") {
           return JSON.stringify({ keepMacAwakeEnabled: false });
         }
         throw new Error("unexpected read");

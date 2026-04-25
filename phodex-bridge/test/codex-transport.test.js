@@ -135,6 +135,7 @@ test("spawn transport retries with the bundled Codex binary after an ENOENT laun
     const transport = createCodexTransport({
       env: { PATH: "/usr/bin:/bin" },
       appPath,
+      platform: "darwin",
       spawnImpl,
     });
     transport.onStarted((info) => {

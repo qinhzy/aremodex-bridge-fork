@@ -119,7 +119,7 @@ test("desktop/continueOnMac relaunches when a desktop-known thread is requested 
   let running = true;
   const fakeFS = {
     existsSync(targetPath) {
-      return targetPath.endsWith("/sessions");
+      return normalizePath(targetPath).endsWith("/sessions");
     },
     readdirSync() {
       return [{
@@ -192,7 +192,7 @@ test("desktop/continueOnMac boots Codex before deep-linking when the thread alre
   let running = false;
   const fakeFS = {
     existsSync(targetPath) {
-      return targetPath.endsWith("/sessions");
+      return normalizePath(targetPath).endsWith("/sessions");
     },
     readdirSync() {
       return [{
@@ -285,6 +285,10 @@ test("desktop/continueOnMac refuses non-mac platforms", async () => {
   assert.equal(responses[0].id, "request-3");
   assert.equal(responses[0].error?.data?.errorCode, "unsupported_platform");
 });
+
+function normalizePath(candidatePath) {
+  return String(candidatePath).replaceAll("\\", "/");
+}
 
 test("desktop/wakeDisplay sends a stronger caffeinate display wake pulse", async () => {
   const executorCalls = [];
