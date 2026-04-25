@@ -20,6 +20,15 @@ test("remodex --version prints the package version", () => {
   assert.equal(output, version);
 });
 
+test("aremodex-bridge --version prints the package version", () => {
+  const cliPath = path.join(__dirname, "..", "bin", "aremodex-bridge.js");
+  const output = execFileSync(process.execPath, [cliPath, "--version"], {
+    encoding: "utf8",
+  }).trim();
+
+  assert.equal(output, version);
+});
+
 test("remodex restart reuses the macOS service start flow", async () => {
   const calls = [];
   const messages = [];
@@ -140,18 +149,39 @@ test("remodex status --json exposes daemon metadata for companion apps", async (
 
 test("remodex up keeps Linux in the foreground path", async () => {
   const calls = [];
+  const messages = [];
   const adapter = createMockAdapter({
     id: "linux",
     displayName: "Linux",
     supportsBackgroundDaemon: false,
     usesDaemonForUp: false,
+    prepareForegroundRun() {
+      calls.push("prepare-foreground");
+      return {
+        messages: ["[remodex] foreground ready"],
+        warnings: [{
+          message: "foreground warning",
+        }],
+        bridgeOptions: {
+          from: "prepare",
+        },
+      };
+    },
+    runForeground(options) {
+      calls.push(["run-foreground", options]);
+    },
   });
 
   await main({
     argv: ["node", "remodex", "up"],
     platform: "linux",
     consoleImpl: {
-      log() {},
+      log(message) {
+        messages.push(["log", message]);
+      },
+      warn(message) {
+        messages.push(["warn", message]);
+      },
       error(message) {
         throw new Error(`unexpected error: ${message}`);
       },
@@ -164,12 +194,19 @@ test("remodex up keeps Linux in the foreground path", async () => {
         return adapter;
       },
       startBridge() {
-        calls.push("start-bridge");
+        throw new Error("adapter foreground path should run");
       },
     },
   });
 
-  assert.deepEqual(calls, ["start-bridge"]);
+  assert.deepEqual(calls, [
+    "prepare-foreground",
+    ["run-foreground", { from: "prepare" }],
+  ]);
+  assert.deepEqual(messages, [
+    ["log", "[remodex] foreground ready"],
+    ["warn", "[remodex] foreground warning"],
+  ]);
 });
 
 test("remodex up uses the macOS daemon and prints the pairing QR", async () => {
@@ -231,11 +268,83 @@ test("remodex up uses the macOS daemon and prints the pairing QR", async () => {
   ]);
 });
 
+test("remodex diagnose --json emits the adapter diagnostic report", async () => {
+  const writes = [];
+  const originalWrite = process.stdout.write;
+  const adapter = createMockAdapter({
+    id: "win32",
+    displayName: "Windows",
+    supportsBackgroundDaemon: false,
+    usesDaemonForUp: false,
+    diagnose() {
+      return {
+        platform: "win32",
+        displayName: "Windows",
+        codex: {
+          nativeCodexHome: "C:\\Users\\tester\\.codex",
+          installations: [{
+            id: "windows:native",
+            kind: "native",
+            available: true,
+            command: "C:\\Tools\\codex.cmd",
+          }],
+        },
+        firewall: {
+          supported: true,
+          inboundRuleRequired: false,
+        },
+      };
+    },
+  });
+
+  process.stdout.write = (chunk, encoding, callback) => {
+    writes.push(String(chunk));
+    if (typeof callback === "function") {
+      callback();
+    }
+    return true;
+  };
+
+  try {
+    await main({
+      argv: ["node", "remodex", "diagnose", "--json"],
+      platform: "win32",
+      consoleImpl: {
+        log() {},
+        error(message) {
+          throw new Error(`unexpected error: ${message}`);
+        },
+      },
+      exitImpl(code) {
+        throw new Error(`unexpected exit ${code}`);
+      },
+      deps: {
+        createPlatformAdapter() {
+          return adapter;
+        },
+      },
+    });
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+
+  const payload = JSON.parse(writes.join("").trim());
+  assert.equal(payload.platform, "win32");
+  assert.equal(payload.codex.nativeCodexHome, "C:\\Users\\tester\\.codex");
+  assert.equal(payload.firewall.inboundRuleRequired, false);
+});
+
 function createMockAdapter({
   id,
   displayName,
   supportsBackgroundDaemon,
   usesDaemonForUp,
+  prepareForegroundRun = () => ({
+    messages: [],
+    warnings: [],
+    bridgeOptions: {},
+  }),
+  runForeground = () => null,
   startDaemon = async () => null,
   restartDaemon = async (options) => startDaemon(options),
   stopDaemon = async () => null,
@@ -243,13 +352,24 @@ function createMockAdapter({
   printDaemonStatus = () => {},
   printPairingQr = () => {},
   resetPairing = () => {},
-} = {}) {
-  return {
-    id,
+  diagnose = () => ({
+    platform: id,
     displayName,
     daemon: {
       supportsBackgroundDaemon,
       usesDaemonForUp,
+    },
+  }),
+} = {}) {
+  return {
+    id,
+    displayName,
+    prepareForegroundRun,
+    diagnose,
+    daemon: {
+      supportsBackgroundDaemon,
+      usesDaemonForUp,
+      runForeground,
       startDaemon,
       restartDaemon,
       stopDaemon,

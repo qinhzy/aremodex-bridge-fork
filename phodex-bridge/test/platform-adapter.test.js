@@ -38,16 +38,48 @@ test("createPlatformAdapter selects the Linux foreground adapter", () => {
   assert.deepEqual(calls, [{ from: "test" }]);
 });
 
-test("createPlatformAdapter keeps unsupported platforms foreground-only for M1", () => {
+test("createPlatformAdapter selects the Windows foreground adapter", () => {
   const adapter = createPlatformAdapter({
     platform: "win32",
     startBridge() {
       return "foreground";
     },
+    deps: {
+      windows: {
+        consoleManager: {
+          configure() {
+            return {
+              attempted: false,
+              warnings: [],
+            };
+          },
+          getDiagnostics() {
+            return {
+              activeCodePage: "65001",
+            };
+          },
+        },
+      },
+    },
   });
 
   assert.equal(adapter.id, "win32");
   assert.equal(adapter.displayName, "Windows");
+  assert.equal(adapter.daemon.supportsBackgroundDaemon, false);
+  assert.equal(adapter.daemon.runForeground(), "foreground");
+  assert.equal(adapter.firewall.getFirewallStatus().supported, true);
+});
+
+test("createPlatformAdapter keeps unknown platforms foreground-only", () => {
+  const adapter = createPlatformAdapter({
+    platform: "freebsd",
+    startBridge() {
+      return "foreground";
+    },
+  });
+
+  assert.equal(adapter.id, "freebsd");
+  assert.equal(adapter.displayName, "freebsd");
   assert.equal(adapter.daemon.supportsBackgroundDaemon, false);
   assert.equal(adapter.daemon.runForeground(), "foreground");
 });

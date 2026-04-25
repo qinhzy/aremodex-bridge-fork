@@ -4,6 +4,7 @@
   "description": "Local bridge between Codex and the Remodex mobile app. Run `remodex up` to start.",
   "main": "src/index.js",
   "bin": {
+    "aremodex-bridge": "./bin/aremodex-bridge.js",
     "remodex": "./bin/remodex.js"
   },
   "files": [

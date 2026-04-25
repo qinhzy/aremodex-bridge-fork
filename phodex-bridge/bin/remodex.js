@@ -62,17 +62,28 @@ async function main({
       return;
     }
 
-    deps.startBridge();
+    runForegroundBridge({ adapter, consoleImpl, startBridge: deps.startBridge });
     return;
   }
 
   if (command === "run") {
-    deps.startBridge();
+    runForegroundBridge({ adapter, consoleImpl, startBridge: deps.startBridge });
     return;
   }
 
   if (command === "run-service") {
     adapter.daemon.runDaemonEntrypoint();
+    return;
+  }
+
+  if (command === "diagnose") {
+    emitDiagnostics(adapter.diagnose({
+      env: process.env,
+      cwd: process.cwd(),
+    }), {
+      jsonOutput,
+      consoleImpl,
+    });
     return;
   }
 
@@ -227,9 +238,9 @@ async function main({
 
   consoleImpl.error(`Unknown command: ${command}`);
   consoleImpl.error(
-    "Usage: remodex up | remodex run | remodex start | remodex restart | remodex stop | remodex status | "
-    + "remodex reset-pairing | remodex resume | remodex watch [threadId] | remodex --version | "
-    + "append --json to start/restart/stop/status/reset-pairing/resume for machine-readable output"
+    "Usage: remodex up | remodex run | remodex diagnose | remodex start | remodex restart | remodex stop | "
+    + "remodex status | remodex reset-pairing | remodex resume | remodex watch [threadId] | remodex --version | "
+    + "append --json to diagnose/start/restart/stop/status/reset-pairing/resume for machine-readable output"
   );
   exitImpl(1);
 }
@@ -282,6 +293,78 @@ function emitResult({
   consoleImpl.log(message);
 }
 
+function runForegroundBridge({
+  adapter,
+  consoleImpl = console,
+  startBridge: startBridgeImpl = defaultDeps.startBridge,
+} = {}) {
+  const prepared = adapter.prepareForegroundRun?.({
+    env: process.env,
+    cwd: process.cwd(),
+  }) || {};
+  for (const message of prepared.messages || []) {
+    consoleImpl.log(message);
+  }
+  for (const warning of prepared.warnings || []) {
+    consoleImpl.warn?.(`[remodex] ${warning.message || warning.code || "Windows foreground warning"}`);
+  }
+
+  if (typeof adapter.daemon?.runForeground === "function") {
+    return adapter.daemon.runForeground(prepared.bridgeOptions || {});
+  }
+
+  return startBridgeImpl(prepared.bridgeOptions || {});
+}
+
+function emitDiagnostics(report, {
+  jsonOutput = false,
+  consoleImpl = console,
+} = {}) {
+  if (jsonOutput) {
+    emitJson(report);
+    return;
+  }
+
+  consoleImpl.log(`[remodex] Platform: ${report.displayName || report.platform} (${report.platform})`);
+  consoleImpl.log(`[remodex] Daemon: ${report.daemon?.supportsBackgroundDaemon ? "background supported" : "foreground only"}`);
+
+  if (report.encoding) {
+    consoleImpl.log(`[remodex] Encoding: code page ${report.encoding.activeCodePage || "unknown"}`);
+  }
+
+  if (report.codex) {
+    consoleImpl.log(`[remodex] Native Codex home: ${report.codex.nativeCodexHome || report.codexHome || "unknown"}`);
+    for (const candidate of report.codex.installations || []) {
+      consoleImpl.log(formatCodexCandidate(candidate));
+    }
+  } else if (report.codexHome) {
+    consoleImpl.log(`[remodex] Codex home: ${report.codexHome}`);
+  }
+
+  if (report.paths) {
+    for (const entry of report.paths.trackedPaths || []) {
+      consoleImpl.log(`[remodex] Path ${entry.id}: ${entry.value || "not set"}${entry.length != null ? ` (${entry.length} chars)` : ""}`);
+    }
+    for (const warning of report.paths.warnings || []) {
+      consoleImpl.warn?.(`[remodex] ${warning.message}`);
+    }
+  }
+
+  if (report.firewall) {
+    const firewallMode = report.firewall.inboundRuleRequired ? "inbound rule may be required" : "no inbound rule needed";
+    consoleImpl.log(`[remodex] Firewall: ${firewallMode}`);
+    for (const warning of report.firewall.warnings || []) {
+      consoleImpl.warn?.(`[remodex] ${warning.message}`);
+    }
+  }
+}
+
+function formatCodexCandidate(candidate) {
+  const status = candidate.available ? "available" : `missing (${candidate.reason || "not_found"})`;
+  const detail = candidate.command || candidate.appPath || candidate.codexHome || "";
+  return `[remodex] Codex ${candidate.kind || candidate.id}: ${status}${detail ? ` - ${detail}` : ""}`;
+}
+
 function emitJson(payload) {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
@@ -304,6 +387,9 @@ function isVersionCommand(value) {
 }
 
 module.exports = {
+  emitDiagnostics,
+  formatCodexCandidate,
   isVersionCommand,
   main,
+  runForegroundBridge,
 };

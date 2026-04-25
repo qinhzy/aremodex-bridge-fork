@@ -2,11 +2,12 @@
 // Purpose: Selects the platform adapter while keeping platform branching out of bridge business logic.
 // Layer: Platform abstraction
 // Exports: createPlatformAdapter plus adapter classes
-// Depends on: ./darwin, ./generic, ./linux
+// Depends on: ./darwin, ./generic, ./linux, ./windows
 
 const { DarwinAdapter } = require("./darwin");
 const { GenericForegroundAdapter } = require("./generic");
 const { LinuxAdapter } = require("./linux");
+const { WindowsAdapter } = require("./windows");
 
 function createPlatformAdapter({
   platform = process.platform,
@@ -27,11 +28,9 @@ function createPlatformAdapter({
   }
 
   if (platform === "win32") {
-    return new GenericForegroundAdapter({
-      id: "win32",
-      displayName: "Windows",
-      startBridge,
-      resetBridgePairing,
+    return new WindowsAdapter({
+      startBridge: deps.windows?.startBridge || startBridge,
+      resetBridgePairing: deps.windows?.resetBridgePairing || resetBridgePairing,
       ...deps.windows,
     });
   }
@@ -49,5 +48,6 @@ module.exports = {
   DarwinAdapter,
   GenericForegroundAdapter,
   LinuxAdapter,
+  WindowsAdapter,
   createPlatformAdapter,
 };
