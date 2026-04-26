@@ -54,3 +54,26 @@ jobs:
       - name: Run bridge tests
         working-directory: phodex-bridge
         run: npm test
+
+      - name: Run Windows console smoke (PowerShell)
+        if: matrix.os == 'windows-latest'
+        working-directory: phodex-bridge
+        shell: cmd
+        run: |
+          chcp 936 > nul
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "node ./scripts/windows-console-smoke.js --shell powershell --initial-code-page 936 --log '%RUNNER_TEMP%\powershell-run-injected.log'"
+          type "%RUNNER_TEMP%\powershell-run-injected.log"
+
+      - name: Run Windows console smoke (cmd)
+        if: matrix.os == 'windows-latest'
+        working-directory: phodex-bridge
+        shell: cmd
+        run: |
+          chcp 936 > nul
+          node .\scripts\windows-console-smoke.js --shell cmd --initial-code-page 936 --log "%RUNNER_TEMP%\cmd-run-injected.log"
+          type "%RUNNER_TEMP%\cmd-run-injected.log"
+
+      - name: Run macOS remodex up smoke
+        if: matrix.os == 'macos-latest'
+        working-directory: phodex-bridge
+        run: node ./scripts/macos-up-smoke.js

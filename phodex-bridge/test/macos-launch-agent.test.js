@@ -11,6 +11,7 @@ const os = require("os");
 const path = require("path");
 const {
   buildLaunchAgentPlist,
+  buildLaunchAgentExtraEnv,
   getMacOSBridgeServiceStatus,
   mergeBridgeStatusForDaemon,
   resetMacOSBridgePairing,
@@ -35,12 +36,27 @@ test("buildLaunchAgentPlist points launchd at run-service with remodex state pat
     stderrLogPath: "/Users/tester/.remodex/logs/bridge.stderr.log",
     nodePath: "/usr/local/bin/node",
     cliPath: "/tmp/remodex/bin/remodex.js",
+    extraEnv: {
+      REMODEX_DEVICE_STATE_KEYCHAIN_MOCK_FILE: "/tmp/remodex/keychain.json",
+    },
   });
 
   assert.match(plist, /<string>com\.remodex\.bridge<\/string>/);
   assert.match(plist, /<string>run-service<\/string>/);
   assert.match(plist, /<key>KeepAlive<\/key>\s*<dict>\s*<key>SuccessfulExit<\/key>\s*<false\/>\s*<\/dict>/);
   assert.match(plist, /<key>REMODEX_DEVICE_STATE_DIR<\/key>/);
+  assert.match(plist, /<key>REMODEX_DEVICE_STATE_KEYCHAIN_MOCK_FILE<\/key>/);
+});
+
+test("buildLaunchAgentExtraEnv only forwards device-state test overrides", () => {
+  assert.deepEqual(buildLaunchAgentExtraEnv({
+    REMODEX_DEVICE_STATE_FILE: "/tmp/remodex/device-state.json",
+    REMODEX_DEVICE_STATE_KEYCHAIN_MOCK_FILE: "/tmp/remodex/keychain.json",
+    REMODEX_RELAY: "ws://example.invalid/relay",
+  }), {
+    REMODEX_DEVICE_STATE_FILE: "/tmp/remodex/device-state.json",
+    REMODEX_DEVICE_STATE_KEYCHAIN_MOCK_FILE: "/tmp/remodex/keychain.json",
+  });
 });
 
 test("resolveLaunchAgentPlistPath writes into the user's LaunchAgents folder", () => {

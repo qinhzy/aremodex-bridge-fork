@@ -41,10 +41,7 @@ class WindowsAdapter extends PlatformAdapter {
     config = null,
     forceConsole = false,
   } = {}) {
-    const encoding = this.consoleManager.configure({
-      env,
-      force: forceConsole || isTruthy(env.AREMODEX_FORCE_WINDOWS_CONSOLE),
-    });
+    const encoding = this.consoleManager.configure({ env, force: forceConsole });
     const firewall = this.firewall.getFirewallStatus({ env, config });
     const workspacePath = this.normalizeWorkspacePath(cwd);
     const warnings = [
@@ -121,11 +118,6 @@ function buildEncodingMessage(encoding) {
   }
 
   return "[remodex] Windows console UTF-8 preparation was attempted; run `aremodex-bridge diagnose` if logs look garbled.";
-}
-
-function isTruthy(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
 module.exports = {

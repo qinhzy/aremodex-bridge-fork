@@ -225,6 +225,7 @@ function writeLaunchAgentPlist({
     stderrLogPath,
     nodePath,
     cliPath,
+    extraEnv: buildLaunchAgentExtraEnv(env),
   });
 
   fsImpl.mkdirSync(path.dirname(plistPath), { recursive: true });
@@ -240,6 +241,7 @@ function buildLaunchAgentPlist({
   stderrLogPath,
   nodePath,
   cliPath,
+  extraEnv = {},
 }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -270,6 +272,7 @@ function buildLaunchAgentPlist({
     <string>${escapeXml(pathEnv)}</string>
     <key>REMODEX_DEVICE_STATE_DIR</key>
     <string>${escapeXml(stateDir)}</string>
+${serializeLaunchAgentEnv(extraEnv)}
   </dict>
   <key>StandardOutPath</key>
   <string>${escapeXml(stdoutLogPath)}</string>
@@ -278,6 +281,26 @@ function buildLaunchAgentPlist({
 </dict>
 </plist>
 `;
+}
+
+function buildLaunchAgentExtraEnv(env = process.env) {
+  const extraEnv = {};
+  for (const key of [
+    "REMODEX_DEVICE_STATE_FILE",
+    "REMODEX_DEVICE_STATE_KEYCHAIN_MOCK_FILE",
+  ]) {
+    const value = normalizeNonEmptyString(env[key]);
+    if (value) {
+      extraEnv[key] = value;
+    }
+  }
+  return extraEnv;
+}
+
+function serializeLaunchAgentEnv(extraEnv = {}) {
+  return Object.entries(extraEnv)
+    .map(([key, value]) => `    <key>${escapeXml(key)}</key>\n    <string>${escapeXml(value)}</string>`)
+    .join("\n");
 }
 
 async function waitForFreshPairingSession({
@@ -479,6 +502,7 @@ function normalizeNonEmptyString(value) {
 
 module.exports = {
   buildLaunchAgentPlist,
+  buildLaunchAgentExtraEnv,
   getMacOSBridgeServiceStatus,
   mergeBridgeStatusForDaemon,
   printMacOSBridgePairingQr,

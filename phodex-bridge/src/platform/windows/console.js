@@ -49,7 +49,6 @@ class WindowsConsoleManager {
         this.execFileSync("chcp.com", ["65001"], {
           env,
           stdio: ["ignore", "ignore", "ignore"],
-          windowsHide: true,
           timeout: this.timeoutMs,
         });
         changed = true;
@@ -90,7 +89,6 @@ class WindowsConsoleManager {
       const output = this.execFileSync("chcp.com", [], {
         env,
         stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
         timeout: this.timeoutMs,
       });
       const decoded = decodeCommandOutput(output);
