@@ -22,7 +22,18 @@ const {
   HANDSHAKE_MODE_TRUSTED_RECONNECT,
   createBridgeSecureTransport,
   nonceForDirection,
+  opaqueIdFingerprint,
 } = require("../src/secure-transport");
+
+test("opaque identifier fingerprints are stable and do not expose prefixes", () => {
+  const identifier = "session-sensitive-prefix-and-secret";
+  const fingerprint = opaqueIdFingerprint(identifier);
+
+  assert.equal(fingerprint, opaqueIdFingerprint(identifier));
+  assert.match(fingerprint, /^[a-f0-9]{12}$/);
+  assert.equal(identifier.includes(fingerprint), false);
+  assert.equal(fingerprint.includes(identifier.slice(0, 8)), false);
+});
 
 test("secure transport rejects plaintext JSON-RPC before the secure handshake", () => {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");

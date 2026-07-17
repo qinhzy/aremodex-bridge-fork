@@ -225,8 +225,9 @@ function createBridgeSecureTransport({
       transcriptBytes
     );
     debugSecureLog(
-      `serverHello mode=${handshakeMode} session=${shortId(sessionId)} keyEpoch=${keyEpoch} `
-      + `mac=${shortId(currentDeviceState.macDeviceId)} phone=${shortId(phoneDeviceId)} `
+      `serverHello mode=${handshakeMode} session#=${opaqueIdFingerprint(sessionId)} `
+      + `keyEpoch=${keyEpoch} mac#=${opaqueIdFingerprint(currentDeviceState.macDeviceId)} `
+      + `phone#=${opaqueIdFingerprint(phoneDeviceId)} `
       + `macKey=${shortFingerprint(currentDeviceState.macIdentityPublicKey)} `
       + `phoneKey=${shortFingerprint(phoneIdentityPublicKey)} `
       + `transcript=${transcriptDigest(transcriptBytes)}`
@@ -537,9 +538,11 @@ function debugSecureLog(message) {
   console.log(`[remodex][secure] ${message}`);
 }
 
-function shortId(value) {
+function opaqueIdFingerprint(value) {
   const normalized = normalizeNonEmptyString(value);
-  return normalized ? normalized.slice(0, 8) : "none";
+  return normalized
+    ? createHash("sha256").update(normalized, "utf8").digest("hex").slice(0, 12)
+    : "none";
 }
 
 function shortFingerprint(publicKeyBase64) {
@@ -735,4 +738,5 @@ module.exports = {
   SECURE_PROTOCOL_VERSION,
   createBridgeSecureTransport,
   nonceForDirection,
+  opaqueIdFingerprint,
 };
