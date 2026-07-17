@@ -15,6 +15,8 @@ const {
 } = require("./relay");
 const { createPushSessionService } = require("./push-service");
 
+const MAX_JSON_BODY_BYTES = 64 * 1024;
+
 function createRelayServer({
   enablePushService = false,
   exposeDetailedHealth = false,
@@ -162,10 +164,20 @@ async function handleJSONRoute(req, res, handler) {
     const result = await handler(body);
     return writeJSON(res, 200, result);
   } catch (error) {
-    return writeJSON(res, error.status || 500, {
+    const status = Number.isInteger(error?.status)
+      && error.status >= 400
+      && error.status <= 599
+      ? error.status
+      : 500;
+    const isInternalError = status >= 500;
+    return writeJSON(res, status, {
       ok: false,
-      error: error.message || "Internal server error",
-      code: error.code || "internal_error",
+      error: isInternalError
+        ? "Internal server error"
+        : (error.message || "Request failed"),
+      code: isInternalError
+        ? "internal_error"
+        : (error.code || "request_failed"),
     });
   }
 }
@@ -174,21 +186,35 @@ function readJSONBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let totalSize = 0;
+    let settled = false;
+    const declaredSize = Number(req.headers?.["content-length"]);
+
+    if (Number.isFinite(declaredSize) && declaredSize > MAX_JSON_BODY_BYTES) {
+      settled = true;
+      req.resume();
+      reject(bodyTooLargeError());
+      return;
+    }
 
     req.on("data", (chunk) => {
+      if (settled) {
+        return;
+      }
       totalSize += chunk.length;
-      if (totalSize > 64 * 1024) {
-        reject(Object.assign(new Error("Request body too large"), {
-          status: 413,
-          code: "body_too_large",
-        }));
-        req.destroy();
+      if (totalSize > MAX_JSON_BODY_BYTES) {
+        settled = true;
+        chunks.length = 0;
+        reject(bodyTooLargeError());
         return;
       }
       chunks.push(chunk);
     });
 
     req.on("end", () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       const rawBody = Buffer.concat(chunks).toString("utf8");
       if (!rawBody.trim()) {
         resolve({});
@@ -205,13 +231,27 @@ function readJSONBody(req) {
       }
     });
 
-    req.on("error", reject);
+    req.on("error", (error) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+      }
+    });
+  });
+}
+
+function bodyTooLargeError() {
+  return Object.assign(new Error("Request body too large"), {
+    status: 413,
+    code: "body_too_large",
   });
 }
 
 function writeJSON(res, status, body) {
   res.statusCode = status;
   res.setHeader("content-type", "application/json");
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("x-content-type-options", "nosniff");
   res.end(JSON.stringify(body));
 }
 

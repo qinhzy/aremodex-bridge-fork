@@ -28,18 +28,15 @@ async function main() {
 
   const relay = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   const codex = new WebSocketServer({ host: "127.0.0.1", port: 0 });
-  const relayConnections = [];
-  const codexConnections = [];
+  let relayConnectionCount = 0;
+  let codexConnectionCount = 0;
 
-  relay.on("connection", (socket, request) => {
-    relayConnections.push({
-      url: request.url,
-      role: request.headers["x-role"] || "",
-    });
+  relay.on("connection", (socket) => {
+    relayConnectionCount += 1;
     socket.on("message", () => {});
   });
   codex.on("connection", (socket) => {
-    codexConnections.push({ connectedAt: new Date().toISOString() });
+    codexConnectionCount += 1;
     socket.on("message", () => {});
   });
 
@@ -82,7 +79,7 @@ async function main() {
       env,
       timeout: 10_000,
     });
-    emitGitHubNotice("macOS launchctl list | grep remodex", launchctlList.trimEnd());
+    emitGitHubNotice("macOS launchctl service check", "bridge service present; command output redacted");
     assertIncludes(launchctlList, SERVICE_LABEL, "`launchctl list | grep remodex` did not show the bridge service.");
 
     runCommand("node remodex.js stop", process.execPath, [cliPath, "stop"], {
@@ -98,8 +95,8 @@ async function main() {
       throw new Error("The bridge service was still visible in launchctl after `remodex stop`.");
     }
 
-    console.log(`[smoke] relay connections: ${JSON.stringify(relayConnections)}`);
-    console.log(`[smoke] codex endpoint connections: ${JSON.stringify(codexConnections)}`);
+    console.log(`[smoke] relay connection count: ${relayConnectionCount}`);
+    console.log(`[smoke] codex endpoint connection count: ${codexConnectionCount}`);
   } catch (error) {
     const diagnostics = collectMacOSDiagnostics({
       env,
@@ -158,15 +155,13 @@ function runCommand(label, command, args, {
       stdio: ["ignore", "pipe", "pipe"],
       timeout,
     });
-    console.log(output.trimEnd());
+    console.log(`[smoke] ${label}: completed (${Buffer.byteLength(output, "utf8")} bytes captured; content redacted)`);
     return output;
   } catch (error) {
     const output = `${error.stdout || ""}${error.stderr || ""}`;
-    if (output.trim()) {
-      console.log(output.trimEnd());
-    }
+    console.log(`[smoke] ${label}: failed (${Buffer.byteLength(output, "utf8")} bytes captured; content redacted)`);
     if (!allowFailure) {
-      const detailed = new Error(`${label} failed: ${error.message}\n${output}`.trim());
+      const detailed = new Error(`${label} failed; command output redacted.`);
       detailed.cause = error;
       throw detailed;
     }
@@ -189,12 +184,12 @@ function collectMacOSDiagnostics({
   stateDir,
 }) {
   const parts = ["\n[smoke] macOS diagnostics"];
-  parts.push(readTextFile("[smoke] bridge stdout", path.join(stateDir, "logs", "bridge.stdout.log")));
-  parts.push(readTextFile("[smoke] bridge stderr", path.join(stateDir, "logs", "bridge.stderr.log")));
-  parts.push(readTextFile("[smoke] daemon config", path.join(stateDir, "daemon-config.json")));
-  parts.push(readTextFile("[smoke] pairing session", path.join(stateDir, "pairing-session.json")));
+  parts.push(fileMetadata("bridge stdout", path.join(stateDir, "logs", "bridge.stdout.log")));
+  parts.push(fileMetadata("bridge stderr", path.join(stateDir, "logs", "bridge.stderr.log")));
+  parts.push(fileMetadata("daemon config", path.join(stateDir, "daemon-config.json")));
+  parts.push(fileMetadata("pairing session", path.join(stateDir, "pairing-session.json")));
   try {
-    parts.push(`[smoke] launchctl print:\n${execFileSync("launchctl", [
+    execFileSync("launchctl", [
       "print",
       `gui/${process.getuid()}/${SERVICE_LABEL}`,
     ], {
@@ -202,39 +197,24 @@ function collectMacOSDiagnostics({
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 10_000,
-    }).trimEnd()}`);
+    });
+    parts.push("[smoke] launchctl service query: succeeded; output redacted");
   } catch (error) {
-    parts.push(`[smoke] launchctl print failed: ${formatCommandError(error)}`);
+    parts.push(`[smoke] launchctl service query: failed (status=${error.status ?? "unknown"}, signal=${error.signal || "none"}); output redacted`);
   }
   return parts.filter(Boolean).join("\n");
 }
 
-function readTextFile(label, filePath) {
+function fileMetadata(label, filePath) {
   try {
     if (!fs.existsSync(filePath)) {
-      return `${label}: missing (${filePath})`;
+      return `[smoke] ${label}: missing`;
     }
-    const content = fs.readFileSync(filePath, "utf8").trimEnd();
-    return `${label} (${filePath}):\n${truncateForAnnotation(content || "<empty>")}`;
+    const stat = fs.statSync(filePath);
+    return `[smoke] ${label}: present (${stat.size} bytes); content redacted`;
   } catch (error) {
-    return `${label}: failed to read ${filePath}: ${error.message}`;
+    return `[smoke] ${label}: metadata unavailable (${error.code || "unknown"}); content redacted`;
   }
-}
-
-function formatCommandError(error) {
-  return [
-    error.message,
-    error.stdout?.toString?.("utf8"),
-    error.stderr?.toString?.("utf8"),
-  ].filter(Boolean).join("\n").trim();
-}
-
-function truncateForAnnotation(value, maxChars = 6_000) {
-  const text = String(value || "");
-  if (text.length <= maxChars) {
-    return text;
-  }
-  return `${text.slice(0, maxChars)}\n[smoke] ... truncated ${text.length - maxChars} chars ...`;
 }
 
 main().catch((error) => {

@@ -32,6 +32,64 @@ test("health is minimal by default and detailed only when enabled", async () => 
   assert.equal(detailed.push.enabled, false);
 });
 
+test("JSON responses disable caching and MIME sniffing", async () => {
+  await withServer(async ({ port }) => {
+    const response = await fetch(`http://127.0.0.1:${port}/health`);
+
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  });
+});
+
+test("oversized JSON requests receive a structured 413 response", async () => {
+  const { body, status } = await withServer(async ({ port }) => {
+    const response = await fetch(`http://127.0.0.1:${port}/v1/pairing/code/resolve`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: "x".repeat(70 * 1024) }),
+    });
+    return {
+      body: await response.json(),
+      status: response.status,
+    };
+  });
+
+  assert.equal(status, 413);
+  assert.equal(body.code, "body_too_large");
+});
+
+test("unexpected handler failures do not expose internal messages", async () => {
+  const secretMessage = "database password was hunter2";
+  const { body, status } = await withServer(async ({ port }) => {
+    const response = await fetch(`http://127.0.0.1:${port}/v1/push/session/register-device`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ test: true }),
+    });
+    return {
+      body: await response.json(),
+      status: response.status,
+    };
+  }, {
+    pushSessionService: {
+      getStats() {
+        return {};
+      },
+      async registerDevice() {
+        throw new Error(secretMessage);
+      },
+      async notifyCompletion() {
+        throw new Error(secretMessage);
+      },
+    },
+  });
+
+  assert.equal(status, 500);
+  assert.equal(body.code, "internal_error");
+  assert.equal(body.error, "Internal server error");
+  assert.equal(JSON.stringify(body).includes(secretMessage), false);
+});
+
 test("push routes stay disabled until explicitly enabled", async () => {
   const { body, status } = await withServer(async ({ port }) => {
     const response = await fetch(`http://127.0.0.1:${port}/v1/push/session/register-device`, {
