@@ -200,7 +200,26 @@ extension BridgePairingPayload {
     }
 
     var isExpired: Bool {
-        expiryDate <= Date()
+        isExpired(at: Date())
+    }
+
+    func isExpired(at date: Date) -> Bool {
+        expiryDate <= date
+    }
+
+    func expiryCountdown(at date: Date) -> String {
+        let remainingSeconds = max(0, Int(expiryDate.timeIntervalSince(date)))
+        guard remainingSeconds > 0 else {
+            return "Expired"
+        }
+
+        let hours = remainingSeconds / 3_600
+        let minutes = (remainingSeconds % 3_600) / 60
+        let seconds = remainingSeconds % 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m remaining"
+        }
+        return String(format: "%dm %02ds remaining", minutes, seconds)
     }
 }
 

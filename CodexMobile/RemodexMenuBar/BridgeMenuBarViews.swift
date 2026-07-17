@@ -34,6 +34,7 @@ struct BridgeMenuBarContentView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .task {
             relayDraft = store.relayOverride
+            await store.refresh(showSpinner: false)
         }
         .onChange(of: store.relayOverride) { _, newValue in
             relayDraft = newValue
@@ -180,32 +181,11 @@ struct BridgeMenuBarContentView: View {
     @ViewBuilder
     private var qrSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                sectionTitle("Pairing")
-                Spacer()
-                if let payload = store.snapshot?.pairingSession?.pairingPayload {
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(payload.isExpired ? Color.orange : Color.green)
-                            .frame(width: 6, height: 6)
-                        Text(payload.isExpired ? "Expired" : "Ready")
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
+            sectionTitle("Pairing")
 
             if let payload = store.snapshot?.pairingSession?.pairingPayload {
-                HStack(alignment: .top, spacing: 12) {
-                    PairingQRCodeView(payload: payload)
-                        .frame(width: 100, height: 100)
-                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        LabelValueRow(label: "Session", value: payload.sessionId)
-                        LabelValueRow(label: "Device", value: payload.macDeviceId)
-                        LabelValueRow(label: "Expires", value: payload.expiryDate.formatted(date: .omitted, time: .shortened))
-                    }
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    pairingContent(payload: payload, now: context.date)
                 }
             } else {
                 Text("Start the bridge to generate a pairing QR.")
@@ -216,6 +196,65 @@ struct BridgeMenuBarContentView: View {
         .padding(12)
         .background(cardFill, in: cardShape)
         .overlay(cardBorder)
+    }
+
+    private func pairingContent(payload: BridgePairingPayload, now: Date) -> some View {
+        let isExpired = payload.isExpired(at: now)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(isExpired ? Color.orange : Color.green)
+                    .frame(width: 6, height: 6)
+                Text(isExpired ? "EXPIRED" : "READY")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(payload.expiryCountdown(at: now))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(isExpired ? Color.orange : Color.gray)
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                PairingQRCodeView(payload: payload)
+                    .frame(width: 100, height: 100)
+                    .opacity(isExpired ? 0.28 : 1)
+                    .overlay {
+                        if isExpired {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .background(
+                        Color(nsColor: .textBackgroundColor),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+
+                VStack(alignment: .leading, spacing: 6) {
+                    LabelValueRow(label: "Security", value: "Identifiers hidden")
+                    LabelValueRow(
+                        label: "Expires",
+                        value: payload.expiryDate.formatted(date: .omitted, time: .shortened)
+                    )
+                    Text(isExpired
+                         ? "Generate a fresh QR before scanning."
+                         : "Scan only from the Remodex app on your iPhone.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if isExpired {
+                CompactActionButton(
+                    "Generate Fresh QR",
+                    style: .primary,
+                    isDisabled: store.isPerformingAction
+                ) {
+                    store.startBridge()
+                }
+            }
+        }
     }
 
     // MARK: - Logs
@@ -471,13 +510,20 @@ private struct LabelValueRow: View {
 private struct CompactActionButton: View {
     let title: String
     let style: Style
+    let isDisabled: Bool
     let action: () -> Void
 
     enum Style { case primary, secondary, destructive }
 
-    init(_ title: String, style: Style = .secondary, action: @escaping () -> Void) {
+    init(
+        _ title: String,
+        style: Style = .secondary,
+        isDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) {
         self.title = title
         self.style = style
+        self.isDisabled = isDisabled
         self.action = action
     }
 
@@ -495,6 +541,8 @@ private struct CompactActionButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.55 : 1)
     }
 
     private var backgroundColor: Color {

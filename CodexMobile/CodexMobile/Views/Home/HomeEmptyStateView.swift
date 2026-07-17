@@ -31,33 +31,7 @@ struct HomeEmptyStateView<AuthSection: View, Footer: View>: View {
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     .adaptiveGlass(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
 
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(statusDotColor)
-                        .frame(width: 6, height: 6)
-                        .scaleEffect(dotPulse ? 1.4 : 1.0)
-                        .opacity(dotPulse ? 0.6 : 1.0)
-                        .animation(
-                            isBusy
-                                ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
-                                : .default,
-                            value: dotPulse
-                        )
-
-                    Text(statusLabel)
-                        .font(AppFont.caption(weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(
-                    Capsule()
-                        .fill(Color(.systemBackground))
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                )
+                timedConnectionFeedback
 
                 if let trustedPairPresentation {
                     TrustedPairSummaryView(presentation: trustedPairPresentation)
@@ -144,11 +118,67 @@ struct HomeEmptyStateView<AuthSection: View, Footer: View>: View {
         }
     }
 
-    private var statusLabel: String {
+    @ViewBuilder
+    private var timedConnectionFeedback: some View {
+        if case .connecting = connectionPhase {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                connectionFeedback(at: context.date)
+            }
+        } else {
+            connectionFeedback(at: Date())
+        }
+    }
+
+    private func connectionFeedback(at date: Date) -> some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(statusDotColor)
+                    .frame(width: 6, height: 6)
+                    .scaleEffect(dotPulse ? 1.4 : 1.0)
+                    .opacity(dotPulse ? 0.6 : 1.0)
+                    .animation(
+                        isBusy
+                            ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
+                            : .default,
+                        value: dotPulse
+                    )
+
+                Text(statusLabel(at: date))
+                    .font(AppFont.caption(weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(
+                Capsule()
+                    .fill(Color(.systemBackground))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            )
+
+            if isBusy {
+                ConnectionPhaseProgressRail(phase: connectionPhase)
+            }
+
+            if isSlowConnection(at: date) {
+                Text("This is taking longer than expected. Your Mac may be asleep or the saved pairing may have expired.")
+                    .font(AppFont.caption())
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: isSlowConnection(at: date))
+    }
+
+    private func statusLabel(at date: Date) -> String {
         switch connectionPhase {
         case .connecting:
             guard let connectionAttemptStartedAt else { return "Connecting" }
-            let elapsed = Date().timeIntervalSince(connectionAttemptStartedAt)
+            let elapsed = date.timeIntervalSince(connectionAttemptStartedAt)
             if elapsed >= 12 { return "Still connecting…" }
             return "Connecting"
         case .loadingChats:
@@ -160,6 +190,14 @@ struct HomeEmptyStateView<AuthSection: View, Footer: View>: View {
         case .offline:
             return "Offline"
         }
+    }
+
+    private func isSlowConnection(at date: Date) -> Bool {
+        guard case .connecting = connectionPhase,
+              let connectionAttemptStartedAt else {
+            return false
+        }
+        return date.timeIntervalSince(connectionAttemptStartedAt) >= 12
     }
 
     private var primaryButtonTitle: String {
@@ -191,6 +229,59 @@ struct HomeEmptyStateView<AuthSection: View, Footer: View>: View {
             return true
         case .offline, .connecting:
             return false
+        }
+    }
+}
+
+private struct ConnectionPhaseProgressRail: View {
+    let phase: CodexConnectionPhase
+
+    private let labels = ["Relay", "Mac", "Workspace"]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
+                VStack(spacing: 5) {
+                    HStack(spacing: 0) {
+                        if index > 0 {
+                            Rectangle()
+                                .fill(index <= activeStep ? Color(.plan) : Color.primary.opacity(0.1))
+                                .frame(height: 1)
+                        }
+
+                        Circle()
+                            .fill(index <= activeStep ? Color(.plan) : Color(.tertiarySystemFill))
+                            .frame(width: 7, height: 7)
+
+                        if index < labels.count - 1 {
+                            Rectangle()
+                                .fill(index < activeStep ? Color(.plan) : Color.primary.opacity(0.1))
+                                .frame(height: 1)
+                        }
+                    }
+
+                    Text(label)
+                        .font(AppFont.mono(.caption2))
+                        .foregroundStyle(index <= activeStep ? .primary : .tertiary)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Connection progress")
+        .accessibilityValue(labels[activeStep])
+    }
+
+    private var activeStep: Int {
+        switch phase {
+        case .connecting:
+            return 0
+        case .loadingChats:
+            return 1
+        case .syncing, .connected:
+            return 2
+        case .offline:
+            return 0
         }
     }
 }
