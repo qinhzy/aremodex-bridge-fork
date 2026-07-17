@@ -72,7 +72,11 @@ async function main() {
       timeout: 25_000,
     });
     assertIncludes(upOutput, "Scan this QR with the iPhone", "`remodex up` did not print the pairing QR.");
-    assertIncludes(upOutput, "Session ID:", "`remodex up` did not print a pairing session id.");
+    assertIncludes(
+      upOutput,
+      "Pairing session ready (identifiers hidden).",
+      "`remodex up` did not confirm the redacted pairing session.",
+    );
 
     const launchctlList = runShell("launchctl list | grep remodex", "launchctl list | grep remodex", {
       env,
