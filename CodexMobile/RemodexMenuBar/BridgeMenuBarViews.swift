@@ -685,6 +685,7 @@ private struct LabelValueRow: View {
     let label: String
     let value: String
     let isCopyable: Bool
+    @State private var copied = false
 
     init(label: String, value: String, isCopyable: Bool = false) {
         self.label = label
@@ -711,17 +712,27 @@ private struct LabelValueRow: View {
             .accessibilityLabel("\(label): \(value)")
 
             if isCopyable {
-                Button(action: copyValue) {
-                    Image(systemName: "doc.on.doc")
+                Button {
+                    copyValue()
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        copied = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            copied = false
+                        }
+                    }
+                } label: {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(copied ? Color.green : Color.secondary)
                         .accessibilityHidden(true)
                         .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Copy \(label)")
-                .accessibilityLabel("Copy \(label)")
+                .help(copied ? "\(label) copied" : "Copy \(label)")
+                .accessibilityLabel(copied ? "\(label) copied" : "Copy \(label)")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
