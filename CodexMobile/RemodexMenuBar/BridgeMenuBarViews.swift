@@ -98,6 +98,9 @@ struct BridgeMenuBarContentView: View {
             Text(currentStatusTitle.uppercased())
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(currentStatusTitle)
         }
     }
 
@@ -226,10 +229,14 @@ struct BridgeMenuBarContentView: View {
             }
 
             HStack(spacing: 6) {
-                CompactActionButton("Start", style: .primary, isDisabled: controlsDisabled) {
+                CompactActionButton(startActionTitle, style: .primary, isDisabled: controlsDisabled) {
                     store.startBridge()
                 }
-                CompactActionButton("Stop", style: .destructive, isDisabled: controlsDisabled) {
+                CompactActionButton(
+                    "Stop",
+                    style: .destructive,
+                    isDisabled: controlsDisabled || store.snapshot?.launchdLoaded != true
+                ) {
                     store.stopBridge()
                 }
                 CompactActionButton("Resume", style: .secondary, isDisabled: controlsDisabled) {
@@ -555,6 +562,10 @@ struct BridgeMenuBarContentView: View {
         store.isPerformingAction || store.isRefreshing
     }
 
+    private var startActionTitle: String {
+        store.snapshot?.launchdLoaded == true ? "New QR" : "Start"
+    }
+
     private var normalizedRelayDraft: String {
         relayDraft.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -592,6 +603,9 @@ struct BridgeMenuBarContentView: View {
             Text(value)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(value)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 5)
@@ -606,7 +620,11 @@ struct BridgeMenuBarContentView: View {
             Text(value)
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(value)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(Color(nsColor: .textBackgroundColor).opacity(0.78), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -671,8 +689,14 @@ private struct LabelValueRow: View {
             Text(value)
                 .font(.system(size: 10, weight: .regular, design: .monospaced))
                 .foregroundStyle(.primary)
+                .lineLimit(2)
+                .truncationMode(.middle)
                 .textSelection(.enabled)
+                .help(value)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 }
 
