@@ -12,7 +12,6 @@ struct BridgeMenuBarContentView: View {
     @ObservedObject var store: BridgeMenuBarStore
     @State private var relayDraft = ""
     @State private var isResetConfirmationPresented = false
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ScrollView {
@@ -59,9 +58,23 @@ struct BridgeMenuBarContentView: View {
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center) {
-                Text("Remodex Ctrl")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.12))
+                    Image(systemName: "iphone.and.arrow.forward")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .frame(width: 36, height: 36)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Remodex Bridge")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text("Mac ↔ iPhone control center")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 statusIndicator
             }
@@ -93,6 +106,28 @@ struct BridgeMenuBarContentView: View {
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("Status")
+
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(statusTint.opacity(0.14))
+                    Image(systemName: statusSymbolName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(statusTint)
+                }
+                .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(statusGuidanceTitle)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text(statusGuidanceDetail)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.bottom, 2)
 
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
                 GridRow {
@@ -405,7 +440,7 @@ struct BridgeMenuBarContentView: View {
     private let cardShape = RoundedRectangle(cornerRadius: 12, style: .continuous)
 
     private var cardFill: Color {
-        Color(nsColor: .controlBackgroundColor).opacity(colorScheme == .dark ? 0.45 : 0.6)
+        Color(nsColor: .controlBackgroundColor).opacity(0.62)
     }
 
     private var cardBorder: some View {
@@ -441,6 +476,72 @@ struct BridgeMenuBarContentView: View {
         case .checking: return "Checking"
         case .missing: return "CLI Missing"
         case .broken: return "CLI Error"
+        }
+    }
+
+    private var statusSymbolName: String {
+        if !store.isCLIAvailable { return "terminal.fill" }
+        if store.updateState.isUpdateAvailable { return "arrow.down.circle.fill" }
+
+        switch store.snapshot?.bridgeStatus?.connectionStatus?.lowercased() {
+        case "connected":
+            return "checkmark.circle.fill"
+        case "connecting", "starting":
+            return "arrow.triangle.2.circlepath"
+        case "error":
+            return "exclamationmark.triangle.fill"
+        default:
+            return store.snapshot?.launchdLoaded == true ? "bolt.horizontal.circle.fill" : "pause.circle.fill"
+        }
+    }
+
+    private var statusGuidanceTitle: String {
+        if !store.isCLIAvailable {
+            return store.cliAvailability.setupTitle
+        }
+        if store.updateState.isUpdateAvailable {
+            return "A bridge update is ready"
+        }
+
+        switch store.snapshot?.bridgeStatus?.connectionStatus?.lowercased() {
+        case "connected":
+            return "Bridge ready for your iPhone"
+        case "connecting", "starting":
+            return "Connecting to the relay"
+        case "error":
+            return "Bridge needs attention"
+        default:
+            return store.snapshot?.launchdLoaded == true
+                ? "Bridge service is running"
+                : "Start the bridge to pair"
+        }
+    }
+
+    private var statusGuidanceDetail: String {
+        if !store.isCLIAvailable {
+            return store.cliAvailability.setupMessage
+        }
+        if store.updateState.isUpdateAvailable {
+            let latest = store.updateState.latestVersion ?? "the latest release"
+            return "Version \(latest) is available. Update when you are ready, then refresh the status."
+        }
+
+        switch store.snapshot?.bridgeStatus?.connectionStatus?.lowercased() {
+        case "connected":
+            let relay = store.snapshot?.relayKindLabel ?? "configured"
+            return "The \(relay.lowercased()) relay is connected. Scan a fresh pairing code only when adding a device."
+        case "connecting", "starting":
+            return "The service is running and negotiating a relay connection. Refresh if this state does not change."
+        case "error":
+            if let message = store.snapshot?.lastErrorMessage, !message.isEmpty {
+                return message
+            }
+            return "Open the daemon logs for details, then retry the bridge."
+        default:
+            if store.snapshot?.launchdLoaded == true {
+                return "The daemon is loaded but has not reported an active relay connection yet."
+            }
+            return "Starting creates a short-lived pairing code and begins the relay connection."
         }
     }
 
@@ -493,12 +594,8 @@ struct BridgeMenuBarContentView: View {
                 .foregroundStyle(.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color(nsColor: .textBackgroundColor).opacity(0.78), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-        )
+        .padding(.vertical, 5)
+        .padding(.horizontal, 2)
     }
 
     private func metricChip(_ title: String, _ value: String) -> some View {
