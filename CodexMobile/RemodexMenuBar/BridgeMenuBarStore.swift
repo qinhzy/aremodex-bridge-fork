@@ -67,8 +67,17 @@ final class BridgeMenuBarStore: ObservableObject {
     }
 
     func saveRelayOverride(_ value: String) {
-        relayOverride = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let validationMessage = BridgeRelayOverrideValidator.errorMessage(for: normalizedValue) {
+            transientMessage = ""
+            errorMessage = validationMessage
+            return
+        }
+
+        relayOverride = normalizedValue
         UserDefaults.standard.set(relayOverride, forKey: Self.relayOverrideKey)
+        transientMessage = "Relay override saved."
+        errorMessage = ""
         Task {
             await self.refresh(showSpinner: true)
         }
@@ -77,6 +86,8 @@ final class BridgeMenuBarStore: ObservableObject {
     func clearRelayOverride() {
         relayOverride = ""
         UserDefaults.standard.removeObject(forKey: Self.relayOverrideKey)
+        transientMessage = "Using the default relay configuration."
+        errorMessage = ""
         Task {
             await self.refresh(showSpinner: true)
         }
@@ -84,7 +95,7 @@ final class BridgeMenuBarStore: ObservableObject {
 
     func startBridge() {
         let previousPairingDate = snapshot?.pairingSession?.createdDate
-        runAction(successMessage: "Bridge avviato.") {
+        runAction(successMessage: "Bridge started.") {
             try await self.requireCLIAvailability()
             try await self.service.startBridge(relayOverride: self.effectiveRelayOverride)
             try await self.waitForFreshPairing(after: previousPairingDate)
@@ -92,7 +103,7 @@ final class BridgeMenuBarStore: ObservableObject {
     }
 
     func stopBridge() {
-        runAction(successMessage: "Bridge fermato.") {
+        runAction(successMessage: "Bridge stopped.") {
             try await self.requireCLIAvailability()
             try await self.service.stopBridge(relayOverride: self.effectiveRelayOverride)
             try await self.refreshAfterAction()
@@ -100,7 +111,7 @@ final class BridgeMenuBarStore: ObservableObject {
     }
 
     func resumeLastThread() {
-        runAction(successMessage: "Ultimo thread riaperto in Codex.") {
+        runAction(successMessage: "Last thread reopened in Codex.") {
             try await self.requireCLIAvailability()
             try await self.service.resumeLastThread(relayOverride: self.effectiveRelayOverride)
             try await self.refreshAfterAction()
@@ -108,7 +119,7 @@ final class BridgeMenuBarStore: ObservableObject {
     }
 
     func resetPairing() {
-        runAction(successMessage: "Pairing resettato.") {
+        runAction(successMessage: "Pairing reset.") {
             try await self.requireCLIAvailability()
             try await self.service.resetPairing(relayOverride: self.effectiveRelayOverride)
             try await self.refreshAfterAction()
@@ -116,7 +127,7 @@ final class BridgeMenuBarStore: ObservableObject {
     }
 
     func updateBridgePackage() {
-        runAction(successMessage: "Bridge aggiornato all’ultima release.") {
+        runAction(successMessage: "Bridge updated to the latest release.") {
             try await self.requireCLIAvailability()
             try await self.service.updateBridgePackage()
             if self.snapshot?.launchdLoaded == true {

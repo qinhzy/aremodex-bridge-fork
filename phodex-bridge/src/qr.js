@@ -50,8 +50,7 @@ function printQR(pairingSessionOrPayload) {
     console.log("Or paste this pairing code in the iPhone app:\n");
     console.log(pairingCode);
   }
-  console.log(`\nSession ID: ${pairingPayload.sessionId}`);
-  console.log(`Device ID: ${pairingPayload.macDeviceId}`);
+  console.log("\nPairing session ready (identifiers hidden).");
   console.log(`Expires: ${new Date(pairingPayload.expiresAt).toISOString()}\n`);
 }
 

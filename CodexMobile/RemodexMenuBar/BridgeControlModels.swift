@@ -70,6 +70,29 @@ struct BridgePackageUpdateState: Equatable {
     }
 }
 
+enum BridgeRelayOverrideValidator {
+    static func errorMessage(for rawValue: String) -> String? {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            return nil
+        }
+
+        guard let components = URLComponents(string: value),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "ws" || scheme == "wss",
+              let host = components.host,
+              !host.isEmpty else {
+            return "Enter a complete ws:// or wss:// relay URL."
+        }
+
+        if components.user != nil || components.password != nil {
+            return "Remove usernames and passwords from the relay URL."
+        }
+
+        return nil
+    }
+}
+
 enum BridgeCLIAvailability: Equatable {
     case checking
     case available(version: String)
@@ -200,7 +223,26 @@ extension BridgePairingPayload {
     }
 
     var isExpired: Bool {
-        expiryDate <= Date()
+        isExpired(at: Date())
+    }
+
+    func isExpired(at date: Date) -> Bool {
+        expiryDate <= date
+    }
+
+    func expiryCountdown(at date: Date) -> String {
+        let remainingSeconds = max(0, Int(expiryDate.timeIntervalSince(date)))
+        guard remainingSeconds > 0 else {
+            return "Expired"
+        }
+
+        let hours = remainingSeconds / 3_600
+        let minutes = (remainingSeconds % 3_600) / 60
+        let seconds = remainingSeconds % 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m remaining"
+        }
+        return String(format: "%dm %02ds remaining", minutes, seconds)
     }
 }
 

@@ -11,7 +11,7 @@ import SwiftUI
 struct BridgeMenuBarContentView: View {
     @ObservedObject var store: BridgeMenuBarStore
     @State private var relayDraft = ""
-    @Environment(\.colorScheme) private var colorScheme
+    @State private var isResetConfirmationPresented = false
 
     var body: some View {
         ScrollView {
@@ -34,9 +34,22 @@ struct BridgeMenuBarContentView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .task {
             relayDraft = store.relayOverride
+            await store.refresh(showSpinner: false)
         }
         .onChange(of: store.relayOverride) { _, newValue in
             relayDraft = newValue
+        }
+        .confirmationDialog(
+            "Reset pairing?",
+            isPresented: $isResetConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Reset Pairing", role: .destructive) {
+                store.resetPairing()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This stops the bridge and revokes the saved trusted device. You will need to scan a new pairing code.")
         }
     }
 
@@ -45,9 +58,23 @@ struct BridgeMenuBarContentView: View {
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center) {
-                Text("Remodex Ctrl")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.12))
+                    Image(systemName: "iphone.and.arrow.forward")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .frame(width: 36, height: 36)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Remodex Bridge")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text("Mac ↔ iPhone control center")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 statusIndicator
             }
@@ -71,6 +98,9 @@ struct BridgeMenuBarContentView: View {
             Text(currentStatusTitle.uppercased())
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(currentStatusTitle)
         }
     }
 
@@ -79,6 +109,28 @@ struct BridgeMenuBarContentView: View {
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("Status")
+
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(statusTint.opacity(0.14))
+                    Image(systemName: statusSymbolName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(statusTint)
+                }
+                .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(statusGuidanceTitle)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text(statusGuidanceDetail)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.bottom, 2)
 
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
                 GridRow {
@@ -92,7 +144,7 @@ struct BridgeMenuBarContentView: View {
             }
 
             if let relay = store.snapshot?.effectiveRelayURL, !relay.isEmpty {
-                LabelValueRow(label: "Relay URL", value: relay)
+                LabelValueRow(label: "Relay URL", value: relay, isCopyable: true)
             } else {
                 LabelValueRow(label: "Relay URL", value: "Not configured yet")
             }
@@ -122,12 +174,36 @@ struct BridgeMenuBarContentView: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                 )
+                .disabled(controlsDisabled)
+                .onSubmit(saveRelayDraft)
+                .accessibilityLabel("Relay override URL")
+                .accessibilityHint("Enter a WebSocket URL using ws or wss")
+
+            if let relayValidationMessage {
+                Text(relayValidationMessage)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Relay URL error: \(relayValidationMessage)")
+            }
 
             HStack(spacing: 6) {
-                CompactActionButton("Save", style: .primary) {
-                    store.saveRelayOverride(relayDraft)
+                CompactActionButton(
+                    "Save",
+                    style: .primary,
+                    isDisabled: controlsDisabled
+                        || normalizedRelayDraft.isEmpty
+                        || relayValidationMessage != nil
+                        || !relayDraftHasChanges
+                ) {
+                    saveRelayDraft()
                 }
-                CompactActionButton("Defaults", style: .secondary) {
+                CompactActionButton(
+                    "Defaults",
+                    style: .secondary,
+                    isDisabled: controlsDisabled
+                        || (normalizedRelayDraft.isEmpty && store.relayOverride.isEmpty)
+                ) {
                     relayDraft = ""
                     store.clearRelayOverride()
                 }
@@ -142,29 +218,41 @@ struct BridgeMenuBarContentView: View {
 
     private var commandSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Commands")
+            HStack {
+                sectionTitle("Commands")
+                Spacer()
+                if controlsDisabled {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Command in progress")
+                }
+            }
 
             HStack(spacing: 6) {
-                CompactActionButton("Start", style: .primary) {
+                CompactActionButton(startActionTitle, style: .primary, isDisabled: controlsDisabled) {
                     store.startBridge()
                 }
-                CompactActionButton("Stop", style: .destructive) {
+                CompactActionButton(
+                    "Stop",
+                    style: .destructive,
+                    isDisabled: controlsDisabled || store.snapshot?.launchdLoaded != true
+                ) {
                     store.stopBridge()
                 }
-                CompactActionButton("Resume", style: .secondary) {
+                CompactActionButton("Resume", style: .secondary, isDisabled: controlsDisabled) {
                     store.resumeLastThread()
                 }
             }
 
             HStack(spacing: 6) {
-                CompactActionButton("Refresh", style: .secondary) {
+                CompactActionButton("Refresh", style: .secondary, isDisabled: controlsDisabled) {
                     Task { await store.refresh(showSpinner: true) }
                 }
-                CompactActionButton("Reset Pair", style: .destructive) {
-                    store.resetPairing()
+                CompactActionButton("Reset Pairing", style: .destructive, isDisabled: controlsDisabled) {
+                    isResetConfirmationPresented = true
                 }
                 if store.updateState.isUpdateAvailable {
-                    CompactActionButton("Update", style: .primary) {
+                    CompactActionButton("Update", style: .primary, isDisabled: controlsDisabled) {
                         store.updateBridgePackage()
                     }
                 }
@@ -180,32 +268,11 @@ struct BridgeMenuBarContentView: View {
     @ViewBuilder
     private var qrSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                sectionTitle("Pairing")
-                Spacer()
-                if let payload = store.snapshot?.pairingSession?.pairingPayload {
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(payload.isExpired ? Color.orange : Color.green)
-                            .frame(width: 6, height: 6)
-                        Text(payload.isExpired ? "Expired" : "Ready")
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
+            sectionTitle("Pairing")
 
             if let payload = store.snapshot?.pairingSession?.pairingPayload {
-                HStack(alignment: .top, spacing: 12) {
-                    PairingQRCodeView(payload: payload)
-                        .frame(width: 100, height: 100)
-                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        LabelValueRow(label: "Session", value: payload.sessionId)
-                        LabelValueRow(label: "Device", value: payload.macDeviceId)
-                        LabelValueRow(label: "Expires", value: payload.expiryDate.formatted(date: .omitted, time: .shortened))
-                    }
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    pairingContent(payload: payload, now: context.date)
                 }
             } else {
                 Text("Start the bridge to generate a pairing QR.")
@@ -218,6 +285,65 @@ struct BridgeMenuBarContentView: View {
         .overlay(cardBorder)
     }
 
+    private func pairingContent(payload: BridgePairingPayload, now: Date) -> some View {
+        let isExpired = payload.isExpired(at: now)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(isExpired ? Color.orange : Color.green)
+                    .frame(width: 6, height: 6)
+                Text(isExpired ? "EXPIRED" : "READY")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(payload.expiryCountdown(at: now))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(isExpired ? Color.orange : Color.gray)
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                PairingQRCodeView(payload: payload)
+                    .frame(width: 100, height: 100)
+                    .opacity(isExpired ? 0.28 : 1)
+                    .overlay {
+                        if isExpired {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .background(
+                        Color(nsColor: .textBackgroundColor),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+
+                VStack(alignment: .leading, spacing: 6) {
+                    LabelValueRow(label: "Security", value: "Identifiers hidden")
+                    LabelValueRow(
+                        label: "Expires",
+                        value: payload.expiryDate.formatted(date: .omitted, time: .shortened)
+                    )
+                    Text(isExpired
+                         ? "Generate a fresh QR before scanning."
+                         : "Scan only from the Remodex app on your iPhone.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if isExpired {
+                CompactActionButton(
+                    "Generate Fresh QR",
+                    style: .primary,
+                    isDisabled: controlsDisabled
+                ) {
+                    store.startBridge()
+                }
+            }
+        }
+    }
+
     // MARK: - Logs
 
     private var logsSection: some View {
@@ -225,8 +351,8 @@ struct BridgeMenuBarContentView: View {
             sectionTitle("Logs")
 
             if let snapshot = store.snapshot {
-                LabelValueRow(label: "Stdout", value: snapshot.stdoutLogPath)
-                LabelValueRow(label: "Stderr", value: snapshot.stderrLogPath)
+                LabelValueRow(label: "Stdout", value: snapshot.stdoutLogPath, isCopyable: true)
+                LabelValueRow(label: "Stderr", value: snapshot.stderrLogPath, isCopyable: true)
             }
 
             HStack(spacing: 6) {
@@ -301,13 +427,17 @@ struct BridgeMenuBarContentView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            LabelValueRow(label: "Install", value: BridgeCLIAvailability.installCommand)
+            LabelValueRow(
+                label: "Install",
+                value: BridgeCLIAvailability.installCommand,
+                isCopyable: true
+            )
 
             Text("After installing, reopen the menu or press retry.")
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
 
-            CompactActionButton("Retry", style: .primary) {
+            CompactActionButton("Retry", style: .primary, isDisabled: controlsDisabled) {
                 store.retryCLISetup()
             }
         }
@@ -321,7 +451,7 @@ struct BridgeMenuBarContentView: View {
     private let cardShape = RoundedRectangle(cornerRadius: 12, style: .continuous)
 
     private var cardFill: Color {
-        Color(nsColor: .controlBackgroundColor).opacity(colorScheme == .dark ? 0.45 : 0.6)
+        Color(nsColor: .controlBackgroundColor).opacity(0.62)
     }
 
     private var cardBorder: some View {
@@ -360,10 +490,107 @@ struct BridgeMenuBarContentView: View {
         }
     }
 
+    private var statusSymbolName: String {
+        if !store.isCLIAvailable { return "terminal.fill" }
+        if store.updateState.isUpdateAvailable { return "arrow.down.circle.fill" }
+
+        switch store.snapshot?.bridgeStatus?.connectionStatus?.lowercased() {
+        case "connected":
+            return "checkmark.circle.fill"
+        case "connecting", "starting":
+            return "arrow.triangle.2.circlepath"
+        case "error":
+            return "exclamationmark.triangle.fill"
+        default:
+            return store.snapshot?.launchdLoaded == true ? "bolt.horizontal.circle.fill" : "pause.circle.fill"
+        }
+    }
+
+    private var statusGuidanceTitle: String {
+        if !store.isCLIAvailable {
+            return store.cliAvailability.setupTitle
+        }
+        if store.updateState.isUpdateAvailable {
+            return "A bridge update is ready"
+        }
+
+        switch store.snapshot?.bridgeStatus?.connectionStatus?.lowercased() {
+        case "connected":
+            return "Bridge ready for your iPhone"
+        case "connecting", "starting":
+            return "Connecting to the relay"
+        case "error":
+            return "Bridge needs attention"
+        default:
+            return store.snapshot?.launchdLoaded == true
+                ? "Bridge service is running"
+                : "Start the bridge to pair"
+        }
+    }
+
+    private var statusGuidanceDetail: String {
+        if !store.isCLIAvailable {
+            return store.cliAvailability.setupMessage
+        }
+        if store.updateState.isUpdateAvailable {
+            let latest = store.updateState.latestVersion ?? "the latest release"
+            return "Version \(latest) is available. Update when you are ready, then refresh the status."
+        }
+
+        switch store.snapshot?.bridgeStatus?.connectionStatus?.lowercased() {
+        case "connected":
+            let relay = store.snapshot?.relayKindLabel ?? "configured"
+            return "The \(relay.lowercased()) relay is connected. Scan a fresh pairing code only when adding a device."
+        case "connecting", "starting":
+            return "The service is running and negotiating a relay connection. Refresh if this state does not change."
+        case "error":
+            if let message = store.snapshot?.lastErrorMessage, !message.isEmpty {
+                return message
+            }
+            return "Open the daemon logs for details, then retry the bridge."
+        default:
+            if store.snapshot?.launchdLoaded == true {
+                return "The daemon is loaded but has not reported an active relay connection yet."
+            }
+            return "Starting creates a short-lived pairing code and begins the relay connection."
+        }
+    }
+
     private var pidLabel: String {
         if let pid = store.snapshot?.launchdPid { return String(pid) }
         if let pid = store.snapshot?.bridgeStatus?.pid { return String(pid) }
         return "—"
+    }
+
+    private var controlsDisabled: Bool {
+        store.isPerformingAction || store.isRefreshing
+    }
+
+    private var startActionTitle: String {
+        store.snapshot?.launchdLoaded == true ? "New QR" : "Start"
+    }
+
+    private var normalizedRelayDraft: String {
+        relayDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var relayValidationMessage: String? {
+        BridgeRelayOverrideValidator.errorMessage(for: normalizedRelayDraft)
+    }
+
+    private var relayDraftHasChanges: Bool {
+        normalizedRelayDraft != store.relayOverride
+    }
+
+    private func saveRelayDraft() {
+        guard !controlsDisabled,
+              !normalizedRelayDraft.isEmpty,
+              relayValidationMessage == nil,
+              relayDraftHasChanges else {
+            return
+        }
+        relayDraft = normalizedRelayDraft
+        store.saveRelayOverride(relayDraft)
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -380,14 +607,13 @@ struct BridgeMenuBarContentView: View {
             Text(value)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(value)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color(nsColor: .textBackgroundColor).opacity(0.78), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-        )
+        .padding(.vertical, 5)
+        .padding(.horizontal, 2)
     }
 
     private func metricChip(_ title: String, _ value: String) -> some View {
@@ -398,7 +624,11 @@ struct BridgeMenuBarContentView: View {
             Text(value)
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(value)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(Color(nsColor: .textBackgroundColor).opacity(0.78), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -454,30 +684,73 @@ struct BridgeMenuBarLabel: View {
 private struct LabelValueRow: View {
     let label: String
     let value: String
+    let isCopyable: Bool
+
+    init(label: String, value: String, isCopyable: Bool = false) {
+        self.label = label
+        self.value = value
+        self.isCopyable = isCopyable
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased())
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.tertiary)
-            Text(value)
-                .font(.system(size: 10, weight: .regular, design: .monospaced))
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label.uppercased())
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                Text(value)
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                    .help(value)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(label): \(value)")
+
+            if isCopyable {
+                Button(action: copyValue) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Copy \(label)")
+                .accessibilityLabel("Copy \(label)")
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func copyValue() {
+        let pasteboard = NSPasteboard.general
+        _ = pasteboard.clearContents()
+        _ = pasteboard.setString(value, forType: .string)
     }
 }
 
 private struct CompactActionButton: View {
     let title: String
     let style: Style
+    let isDisabled: Bool
     let action: () -> Void
 
     enum Style { case primary, secondary, destructive }
 
-    init(_ title: String, style: Style = .secondary, action: @escaping () -> Void) {
+    init(
+        _ title: String,
+        style: Style = .secondary,
+        isDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) {
         self.title = title
         self.style = style
+        self.isDisabled = isDisabled
         self.action = action
     }
 
@@ -495,6 +768,8 @@ private struct CompactActionButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.55 : 1)
     }
 
     private var backgroundColor: Color {
