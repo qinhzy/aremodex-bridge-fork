@@ -144,7 +144,7 @@ struct BridgeMenuBarContentView: View {
             }
 
             if let relay = store.snapshot?.effectiveRelayURL, !relay.isEmpty {
-                LabelValueRow(label: "Relay URL", value: relay)
+                LabelValueRow(label: "Relay URL", value: relay, isCopyable: true)
             } else {
                 LabelValueRow(label: "Relay URL", value: "Not configured yet")
             }
@@ -351,8 +351,8 @@ struct BridgeMenuBarContentView: View {
             sectionTitle("Logs")
 
             if let snapshot = store.snapshot {
-                LabelValueRow(label: "Stdout", value: snapshot.stdoutLogPath)
-                LabelValueRow(label: "Stderr", value: snapshot.stderrLogPath)
+                LabelValueRow(label: "Stdout", value: snapshot.stdoutLogPath, isCopyable: true)
+                LabelValueRow(label: "Stderr", value: snapshot.stderrLogPath, isCopyable: true)
             }
 
             HStack(spacing: 6) {
@@ -427,7 +427,11 @@ struct BridgeMenuBarContentView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            LabelValueRow(label: "Install", value: BridgeCLIAvailability.installCommand)
+            LabelValueRow(
+                label: "Install",
+                value: BridgeCLIAvailability.installCommand,
+                isCopyable: true
+            )
 
             Text("After installing, reopen the menu or press retry.")
                 .font(.system(size: 10))
@@ -680,23 +684,53 @@ struct BridgeMenuBarLabel: View {
 private struct LabelValueRow: View {
     let label: String
     let value: String
+    let isCopyable: Bool
+
+    init(label: String, value: String, isCopyable: Bool = false) {
+        self.label = label
+        self.value = value
+        self.isCopyable = isCopyable
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased())
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.tertiary)
-            Text(value)
-                .font(.system(size: 10, weight: .regular, design: .monospaced))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-                .help(value)
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label.uppercased())
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                Text(value)
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                    .help(value)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(label): \(value)")
+
+            if isCopyable {
+                Button(action: copyValue) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Copy \(label)")
+                .accessibilityLabel("Copy \(label)")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(value)")
+    }
+
+    private func copyValue() {
+        let pasteboard = NSPasteboard.general
+        _ = pasteboard.clearContents()
+        _ = pasteboard.setString(value, forType: .string)
     }
 }
 
