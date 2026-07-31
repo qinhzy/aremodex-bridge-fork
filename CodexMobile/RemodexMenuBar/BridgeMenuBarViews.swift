@@ -11,6 +11,7 @@ import SwiftUI
 struct BridgeMenuBarContentView: View {
     @ObservedObject var store: BridgeMenuBarStore
     @State private var relayDraft = ""
+    @State private var isResetConfirmationPresented = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -38,6 +39,18 @@ struct BridgeMenuBarContentView: View {
         }
         .onChange(of: store.relayOverride) { _, newValue in
             relayDraft = newValue
+        }
+        .confirmationDialog(
+            "Reset pairing?",
+            isPresented: $isResetConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Reset Pairing", role: .destructive) {
+                store.resetPairing()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This stops the bridge and revokes the saved trusted device. You will need to scan a new pairing code.")
         }
     }
 
@@ -123,12 +136,13 @@ struct BridgeMenuBarContentView: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                 )
+                .disabled(controlsDisabled)
 
             HStack(spacing: 6) {
-                CompactActionButton("Save", style: .primary) {
+                CompactActionButton("Save", style: .primary, isDisabled: controlsDisabled) {
                     store.saveRelayOverride(relayDraft)
                 }
-                CompactActionButton("Defaults", style: .secondary) {
+                CompactActionButton("Defaults", style: .secondary, isDisabled: controlsDisabled) {
                     relayDraft = ""
                     store.clearRelayOverride()
                 }
@@ -143,29 +157,37 @@ struct BridgeMenuBarContentView: View {
 
     private var commandSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Commands")
+            HStack {
+                sectionTitle("Commands")
+                Spacer()
+                if controlsDisabled {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Command in progress")
+                }
+            }
 
             HStack(spacing: 6) {
-                CompactActionButton("Start", style: .primary) {
+                CompactActionButton("Start", style: .primary, isDisabled: controlsDisabled) {
                     store.startBridge()
                 }
-                CompactActionButton("Stop", style: .destructive) {
+                CompactActionButton("Stop", style: .destructive, isDisabled: controlsDisabled) {
                     store.stopBridge()
                 }
-                CompactActionButton("Resume", style: .secondary) {
+                CompactActionButton("Resume", style: .secondary, isDisabled: controlsDisabled) {
                     store.resumeLastThread()
                 }
             }
 
             HStack(spacing: 6) {
-                CompactActionButton("Refresh", style: .secondary) {
+                CompactActionButton("Refresh", style: .secondary, isDisabled: controlsDisabled) {
                     Task { await store.refresh(showSpinner: true) }
                 }
-                CompactActionButton("Reset Pair", style: .destructive) {
-                    store.resetPairing()
+                CompactActionButton("Reset Pairing", style: .destructive, isDisabled: controlsDisabled) {
+                    isResetConfirmationPresented = true
                 }
                 if store.updateState.isUpdateAvailable {
-                    CompactActionButton("Update", style: .primary) {
+                    CompactActionButton("Update", style: .primary, isDisabled: controlsDisabled) {
                         store.updateBridgePackage()
                     }
                 }
@@ -249,7 +271,7 @@ struct BridgeMenuBarContentView: View {
                 CompactActionButton(
                     "Generate Fresh QR",
                     style: .primary,
-                    isDisabled: store.isPerformingAction
+                    isDisabled: controlsDisabled
                 ) {
                     store.startBridge()
                 }
@@ -346,7 +368,7 @@ struct BridgeMenuBarContentView: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
 
-            CompactActionButton("Retry", style: .primary) {
+            CompactActionButton("Retry", style: .primary, isDisabled: controlsDisabled) {
                 store.retryCLISetup()
             }
         }
@@ -403,6 +425,10 @@ struct BridgeMenuBarContentView: View {
         if let pid = store.snapshot?.launchdPid { return String(pid) }
         if let pid = store.snapshot?.bridgeStatus?.pid { return String(pid) }
         return "—"
+    }
+
+    private var controlsDisabled: Bool {
+        store.isPerformingAction || store.isRefreshing
     }
 
     private func sectionTitle(_ title: String) -> some View {
