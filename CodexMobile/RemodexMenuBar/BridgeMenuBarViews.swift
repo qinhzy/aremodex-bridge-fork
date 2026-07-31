@@ -137,12 +137,35 @@ struct BridgeMenuBarContentView: View {
                         .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                 )
                 .disabled(controlsDisabled)
+                .onSubmit(saveRelayDraft)
+                .accessibilityLabel("Relay override URL")
+                .accessibilityHint("Enter a WebSocket URL using ws or wss")
+
+            if let relayValidationMessage {
+                Text(relayValidationMessage)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Relay URL error: \(relayValidationMessage)")
+            }
 
             HStack(spacing: 6) {
-                CompactActionButton("Save", style: .primary, isDisabled: controlsDisabled) {
-                    store.saveRelayOverride(relayDraft)
+                CompactActionButton(
+                    "Save",
+                    style: .primary,
+                    isDisabled: controlsDisabled
+                        || normalizedRelayDraft.isEmpty
+                        || relayValidationMessage != nil
+                        || !relayDraftHasChanges
+                ) {
+                    saveRelayDraft()
                 }
-                CompactActionButton("Defaults", style: .secondary, isDisabled: controlsDisabled) {
+                CompactActionButton(
+                    "Defaults",
+                    style: .secondary,
+                    isDisabled: controlsDisabled
+                        || (normalizedRelayDraft.isEmpty && store.relayOverride.isEmpty)
+                ) {
                     relayDraft = ""
                     store.clearRelayOverride()
                 }
@@ -429,6 +452,29 @@ struct BridgeMenuBarContentView: View {
 
     private var controlsDisabled: Bool {
         store.isPerformingAction || store.isRefreshing
+    }
+
+    private var normalizedRelayDraft: String {
+        relayDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var relayValidationMessage: String? {
+        BridgeRelayOverrideValidator.errorMessage(for: normalizedRelayDraft)
+    }
+
+    private var relayDraftHasChanges: Bool {
+        normalizedRelayDraft != store.relayOverride
+    }
+
+    private func saveRelayDraft() {
+        guard !controlsDisabled,
+              !normalizedRelayDraft.isEmpty,
+              relayValidationMessage == nil,
+              relayDraftHasChanges else {
+            return
+        }
+        relayDraft = normalizedRelayDraft
+        store.saveRelayOverride(relayDraft)
     }
 
     private func sectionTitle(_ title: String) -> some View {

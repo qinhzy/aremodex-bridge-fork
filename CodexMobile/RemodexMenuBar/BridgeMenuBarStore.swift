@@ -67,8 +67,17 @@ final class BridgeMenuBarStore: ObservableObject {
     }
 
     func saveRelayOverride(_ value: String) {
-        relayOverride = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let validationMessage = BridgeRelayOverrideValidator.errorMessage(for: normalizedValue) {
+            transientMessage = ""
+            errorMessage = validationMessage
+            return
+        }
+
+        relayOverride = normalizedValue
         UserDefaults.standard.set(relayOverride, forKey: Self.relayOverrideKey)
+        transientMessage = "Relay override saved."
+        errorMessage = ""
         Task {
             await self.refresh(showSpinner: true)
         }
@@ -77,6 +86,8 @@ final class BridgeMenuBarStore: ObservableObject {
     func clearRelayOverride() {
         relayOverride = ""
         UserDefaults.standard.removeObject(forKey: Self.relayOverrideKey)
+        transientMessage = "Using the default relay configuration."
+        errorMessage = ""
         Task {
             await self.refresh(showSpinner: true)
         }
