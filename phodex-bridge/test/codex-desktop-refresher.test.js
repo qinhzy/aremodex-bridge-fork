@@ -20,6 +20,16 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function waitFor(predicate, { timeoutMs = 500, intervalMs = 5 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) {
+      throw new Error(`condition was not met within ${timeoutMs}ms`);
+    }
+    await wait(intervalMs);
+  }
+}
+
 function normalizePath(candidatePath) {
   return String(candidatePath).replaceAll("\\", "/");
 }
@@ -241,7 +251,7 @@ test("thread/start falls back once to the new-thread route when thread id is sti
     params: {},
   }));
 
-  await wait(40);
+  await waitFor(() => refreshCalls.length === 1);
 
   assert.deepEqual(refreshCalls, ["codex://threads/new"]);
   refresher.handleTransportReset();
